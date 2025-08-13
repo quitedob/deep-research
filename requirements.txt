@@ -1,10 +1,12 @@
 fastapi
 uvicorn
 langgraph
-openai>=1.0.0
 aiohttp
 python-dotenv
 pydantic-settings
 pydantic>=2.0.0
 arxiv
 wikipedia
+ollama
+openai
+PyYAML

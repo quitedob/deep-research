@@ -5,6 +5,7 @@
       <div class="menu-header">用户</div>
       <div class="menu-items">
         <a href="#" class="menu-item">我的订阅</a>
+        <a href="#" class="menu-item" @click.prevent="openSettings">设置</a>
 
         <div class="menu-item theme-toggle" @click="onToggleTheme">
           <span>{{ currentTheme === 'dark' ? '亮色模式' : '暗色模式' }}</span>

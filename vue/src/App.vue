@@ -66,7 +66,7 @@ html {
 }
 body {
   margin: 0;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: inherit;
   background-color: var(--primary-bg);
   color: var(--text-primary);
   height: 100%;

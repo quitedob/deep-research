@@ -1,55 +1,74 @@
 # -*- coding: utf-8 -*-
 """
-AgentWork 配置管理模块
-使用pydantic-settings管理环境变量和配置
+AgentWork 配置管理模块（统一配置源）
+以 conf.yaml 为唯一可信源，结合环境变量（如 API Key）进行加载与校验。
 """
 
 import os
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from pathlib import Path
-from pydantic import BaseSettings, Field
-from dotenv import load_dotenv
+from pydantic import BaseModel, Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+import yaml
 
-# 加载.env文件
 ROOT_DIR = Path(__file__).parent.parent.parent.absolute()
-env_file = ROOT_DIR / ".env"
-if env_file.exists():
-    load_dotenv(env_file)
+CONFIG_FILE = ROOT_DIR / "conf.yaml"
+
+
+def _load_yaml(path: Path) -> Dict[str, Any]:
+    if not path.exists():
+        raise FileNotFoundError(f"配置文件未找到: {path}")
+    text = path.read_text(encoding="utf-8")
+    # 展开 ${VAR} 环境变量占位
+    text = os.path.expandvars(text)
+    return yaml.safe_load(text)
+
 
 class Settings(BaseSettings):
-    """应用设置类（精简为 Kimi/Moonshot 专用）"""
+    """应用设置（强类型），从 conf.yaml 加载并允许环境覆盖。"""
 
-    # === 基础配置 ===
-    DEBUG: bool = Field(default=True, env="DEBUG")
+    # 服务器
+    HOST: str = Field(default="0.0.0.0")
+    PORT: int = Field(default=8000)
+    DEBUG: bool = Field(default=True)
 
-    # === 服务器配置 ===
-    HOST: str = Field(default="0.0.0.0", env="HOST")
-    PORT: int = Field(default=8000, env="PORT")
+    # CORS
+    CORS_ALLOW_ORIGINS: List[str] = Field(default=["*"])
+    CORS_ALLOW_CREDENTIALS: bool = Field(default=True)
 
-    # === CORS配置 ===
-    CORS_ORIGINS: List[str] = Field(
-        default=["http://localhost:3000", "http://127.0.0.1:3000"], env="CORS_ORIGINS"
+    # 日志
+    LOG_LEVEL: str = Field(default="INFO")
+    LOG_FORMAT: str = Field(default="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+
+    # Provider 相关（供路由器参考）
+    OLLAMA_BASE_URL: Optional[str] = None
+    OLLAMA_SMALL_MODEL: Optional[str] = None
+    DEEPSEEK_BASE_URL: Optional[str] = None
+    KIMI_BASE_URL: Optional[str] = None
+
+    PROVIDER_PRIORITY: Dict[str, List[str]] = Field(default_factory=dict)
+
+    # API Keys（来自环境变量）
+    DEEPSEEK_API_KEY: Optional[str] = None
+    MOONSHOT_API_KEY: Optional[str] = None
+
+    model_config = SettingsConfigDict(
+        env_file=ROOT_DIR / ".env",
+        env_file_encoding="utf-8",
+        case_sensitive=True,
+        extra="ignore",
     )
 
-    # === 日志配置 ===
-    LOG_LEVEL: str = Field(default="INFO", env="LOG_LEVEL")
+    @classmethod
+    def from_yaml(cls) -> "Settings":
+        data = _load_yaml(CONFIG_FILE)
+        return cls.model_validate(data)
 
-    # === Kimi/Moonshot API配置 ===
-    MOONSHOT_API_KEY: Optional[str] = Field(default=None, env="MOONSHOT_API_KEY")
-    MOONSHOT_BASE_URL: str = Field(default="https://api.moonshot.cn/v1", env="MOONSHOT_BASE_URL")
-    KIMI_MODEL_CHAT: str = Field(default="moonshot-v1-8k", env="KIMI_MODEL_CHAT")
-    KIMI_MODEL_RESEARCH: str = Field(default="moonshot-v1-32k", env="KIMI_MODEL_RESEARCH")
+_settings: Optional[Settings] = None
 
-    class Config:
-        env_file = str(env_file) if env_file.exists() else None
-        case_sensitive = True
-
-# 全局设置实例
-_settings = None
 
 def get_settings() -> Settings:
-    """获取设置实例（单例模式）"""
     global _settings
     if _settings is None:
-        _settings = Settings()
+        _settings = Settings.from_yaml()
     return _settings

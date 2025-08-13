@@ -63,7 +63,7 @@ const handleSendResearch = async (text) => {
 
   try {
     // 3) 启动研究任务 -> 获取 session_id
-    const { session_id } = await startResearch(text);
+    const { session_id } = await startResearch(text, chatStore.activeSessionId);
 
     // 4) 订阅 SSE 事件，动态更新助手消息
     const es = subscribeToResearchEvents(
@@ -77,6 +77,9 @@ const handleSendResearch = async (text) => {
           // 最终报告：替换为报告内容
           chatStore.updateMessageContent({ messageId: assistantMessageId, contentChunk: `\n\n${evt.payload.content}` });
           chatStore.setTypingStatus(false);
+          if (!chatStore.activeSessionId) {
+            chatStore.fetchHistoryList();
+          }
         }
       },
       (err) => {
@@ -100,63 +103,56 @@ const handleSendResearch = async (text) => {
 const handleSendMessage = async (text) => {
   if (!text.trim()) return;
 
-  // (计时器) 记录开始时间
+  const controller = new AbortController();
+  chatStore.setCurrentRequestController(controller);
+
   const startTime = performance.now();
 
-  // 1. Add user message to the store
   chatStore.addMessage({
     role: 'user',
     content: text,
     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   });
 
-  // 2. Add a placeholder for the assistant's response
   const assistantMessageId = chatStore.addMessage({
     role: 'assistant',
-    content: null, // `null` indicates the message is being generated
+    content: null,
     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   });
 
-  // 3. Prepare message history for the API call
-  const history = chatStore.messages
-      .filter(m => m.id !== assistantMessageId) // Exclude the current placeholder
-      .map(msg => ({ role: msg.role, content: msg.content }));
-
-  // 4. Set typing status to true to show the indicator
   chatStore.setTypingStatus(true);
 
-  try {
-    // 5. Call the simple chat API
-    const response = await simpleChat(text, history);
-    
-    // 6. Update the message with the complete response
-    chatStore.updateMessageContent({
-      messageId: assistantMessageId,
-      contentChunk: response.response
-    });
-
-    // 7. Complete the response
-    const endTime = performance.now();
-    const duration = ((endTime - startTime) / 1000).toFixed(1);
-    chatStore.setMessageDuration(assistantMessageId, duration);
-    
-    chatStore.setTypingStatus(false);
-    
-  } catch (error) {
-    console.error('Simple chat error:', error);
-    const errorMessage = handleAPIError(error);
-    chatStore.updateMessageContent({
-      messageId: assistantMessageId,
-      contentChunk: `**错误:** ${errorMessage}`
-    });
-    
-    // 计算时长（即使出错也记录）
-    const endTime = performance.now();
-    const duration = ((endTime - startTime) / 1000).toFixed(1);
-    chatStore.setMessageDuration(assistantMessageId, duration);
-    
-    chatStore.setTypingStatus(false);
-  }
+  streamChat(
+    text,
+    chatStore.activeSessionId,
+    (contentChunk) => {
+      chatStore.updateMessageContent({ messageId: assistantMessageId, contentChunk });
+    },
+    () => {
+      const endTime = performance.now();
+      const duration = ((endTime - startTime) / 1000).toFixed(1);
+      chatStore.setMessageDuration(assistantMessageId, duration);
+      chatStore.setTypingStatus(false);
+      chatStore.setCurrentRequestController(null);
+      // After a successful chat, refresh the history list to show the new conversation
+      if (!chatStore.activeSessionId) {
+        chatStore.fetchHistoryList();
+      }
+    },
+    (error) => {
+      const errorMessage = handleAPIError(error);
+      chatStore.updateMessageContent({
+        messageId: assistantMessageId,
+        contentChunk: `**错误:** ${errorMessage}`
+      });
+      const endTime = performance.now();
+      const duration = ((endTime - startTime) / 1000).toFixed(1);
+      chatStore.setMessageDuration(assistantMessageId, duration);
+      chatStore.setTypingStatus(false);
+      chatStore.setCurrentRequestController(null);
+    },
+    controller.signal
+  );
 };
 
 /**

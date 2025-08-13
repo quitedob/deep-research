@@ -7,13 +7,7 @@
       </button>
     </div>
     <div class="list-container">
-      <p class="section-title">历史记录</p>
-<!--      <p class="section-title explore-title">探索</p>
-      <div class="explore-items">
-        <a href="#" class="explore-item">多代理 RAG</a>
-        <a href="#" class="explore-item">播客生成</a>
-        <a href="#" class="explore-item">代码生成</a>
-      </div>-->
+      <HistoryList />
     </div>
   </div>
 </template>
@@ -21,12 +15,18 @@
 
 <script setup>
 import { useChatStore } from '@/store';
+import HistoryList from './HistoryList.vue';
+import { onMounted } from 'vue';
+
 const chatStore = useChatStore();
 
-// 定义点击事件的处理函数
 const createNewChat = () => {
-  chatStore.clearChat(); // 调用 store 中的 action
+  chatStore.clearChat();
 };
+
+onMounted(() => {
+  chatStore.fetchHistoryList();
+});
 </script>
 
 <style scoped>

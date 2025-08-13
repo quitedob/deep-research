@@ -94,43 +94,77 @@ export async function getProviders() {
  * @param {AbortSignal} signal - 取消信号
  * 简化注释：流式聊天接口
  */
-export async function streamChat(message, chatHistory = [], preferredProvider = null, onChunk, onDone, onError, signal) {
-  try {
-    // 新架构不提供流式普通聊天，此函数保留但改为一次性调用回退
-    const response = await fetch(`${API_BASE_URL}/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message })
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new APIError(errorData.detail || `HTTP ${response.status}`, response.status, errorData);
-    }
-    const data = await response.json();
-    if (data && data.message) {
-      if (onChunk) onChunk(data.message);
-      if (onDone) onDone();
-    }
-  } catch (error) {
-    if (error.name === 'AbortError') console.log('聊天请求被取消');
-    else { console.error('流式聊天失败:', error); onError(error); }
+export function streamChat(message, sessionId = null, onChunk, onDone, onError, signal) {
+  const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
   }
+
+  fetch(`${API_BASE_URL}/chat/stream`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ message, session_id: sessionId }),
+    signal,
+  }).then(response => {
+    if (!response.ok) {
+      return response.json().then(err => { throw new APIError(err.detail || `HTTP ${response.status}`, response.status, err); });
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+
+    function push() {
+      reader.read().then(({ done, value }) => {
+        if (done) {
+          onDone();
+          return;
+        }
+        const chunk = decoder.decode(value, { stream: true });
+        // SSE format is data: {...}\n\n
+        const lines = chunk.match(/data: .*\n\n/g) || [];
+        for (const line of lines) {
+          try {
+            const jsonStr = line.replace(/^data: /, '').replace(/\n\n$/, '');
+            const data = JSON.parse(jsonStr);
+            if (data.type === 'content') {
+              onChunk(data.content);
+            } else if (data.type === 'done') {
+              onDone();
+            } else if (data.type === 'error') {
+              onError(new APIError(data.error));
+            } else if (data.type === 'start' && data.session_id) {
+              // Optional: handle session_id from server if it was newly created
+            }
+          } catch (e) {
+            console.error("SSE parse error", e);
+          }
+        }
+        push();
+      }).catch(error => {
+        if (error.name !== 'AbortError') {
+          onError(error);
+        }
+      });
+    }
+    push();
+  }).catch(error => {
+    if (error.name !== 'AbortError') {
+      onError(error);
+    }
+  });
 }
 
 /**
  * 简单聊天（使用Kimi模型）
  * @param {string} message - 用户消息
- * @param {Array} chatHistory - 聊天历史
- * 简化注释：简单聊天接口
+ * @param {string|null} sessionId - 当前会话ID
  */
-export async function simpleChat(message, chatHistory = []) {
+export async function simpleChat(message, sessionId = null) {
   try {
-    // 新端点：/api/chat，返回 { message, session_id }
     const response = await fetch(`${API_BASE_URL}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message })
+      body: JSON.stringify({ message, session_id: sessionId })
     });
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
@@ -146,16 +180,14 @@ export async function simpleChat(message, chatHistory = []) {
 /**
  * 启动研究任务
  * @param {string} query - 研究查询
- * @param {string} preferredProvider - 首选提供者
- * @param {number} maxIterations - 最大迭代次数
- * 简化注释：启动研究任务
+ * @param {string|null} sessionId - 当前会话ID
  */
-export async function startResearch(query) {
+export async function startResearch(query, sessionId = null) {
   try {
     const response = await fetch(`${API_BASE_URL}/research`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query })
+      body: JSON.stringify({ query, session_id: sessionId })
     });
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
@@ -241,9 +273,12 @@ export async function getFinalResearchReport(sessionId) {
 /**
  * 用户与认证：登录/注册/获取当前用户
  */
-export async function registerUser(username, password) {
+export async function registerUser(username, password, phone, email) {
+  const payload = { username, password };
+  if (phone) payload.phone = phone;
+  if (email) payload.email = email;
   const res = await fetch(`${API_BASE_URL}/register`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password })
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
   });
   if (!res.ok) throw new APIError('注册失败', res.status, await res.json().catch(() => ({})));
   return res.json();
@@ -276,6 +311,33 @@ export async function adminFetchUsage(token) {
   const res = await fetch(`${API_BASE_URL}/admin/usage`, { headers: { Authorization: `Bearer ${token}` } });
   if (!res.ok) throw new APIError('获取使用统计失败', res.status, await res.json().catch(() => ({})));
   return res.json();
+}
+
+/**
+ * 聊天记录
+ */
+export async function fetchHistories(token) {
+    const headers = { 'Content-Type': 'application/json' };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const res = await fetch(`${API_BASE_URL}/histories`, { headers });
+    if (!res.ok) throw new APIError('获取历史列表失败', res.status, await res.json().catch(() => ({})));
+    return res.json();
+}
+
+export async function fetchHistoryMessages(sessionId, token) {
+    const headers = { 'Content-Type': 'application/json' };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const res = await fetch(`${API_BASE_URL}/histories/${sessionId}`, { headers });
+    if (!res.ok) throw new APIError('获取历史消息失败', res.status, await res.json().catch(() => ({})));
+    return res.json();
+}
+
+export async function deleteAllHistories(token) {
+    const headers = { 'Content-Type': 'application/json' };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const res = await fetch(`${API_BASE_URL}/histories`, { method: 'DELETE', headers });
+    if (!res.ok) throw new APIError('删除全部历史失败', res.status, await res.json().catch(() => ({})));
+    return res.json();
 }
 
 /**

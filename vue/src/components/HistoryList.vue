@@ -6,28 +6,22 @@
           v-for="item in chatStore.historyList"
           :key="item.id"
           class="history-item"
-          :class="{ active: item.active }"
+          :class="{ active: item.id === chatStore.activeSessionId }"
           @click="handleSelectHistory(item.id)"
       >
-        <i :class="`fas fa-${item.icon}`"></i>
-        <span>{{ item.title }}</span>
+        <span class="item-title">{{ item.title }}</span>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-// /src/components/HistoryList.vue
-import {useChatStore} from '@/store';
+import { useChatStore } from '@/store';
 
 const chatStore = useChatStore();
 
-// 点击历史项时，调用 Pinia store 中的 action
 function handleSelectHistory(id) {
-  chatStore.selectHistory(id);
-  // 实际应用中，还会根据选择的历史加载对应的场景
-  // const selectedHistory = chatStore.historyList.find(h => h.id === id);
-  // if(selectedHistory) chatStore.switchScenario( ... )
+  chatStore.loadHistory(id);
 }
 </script>
 

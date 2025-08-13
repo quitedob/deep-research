@@ -6,10 +6,20 @@ AgentWork 工作流节点实现
 
 import logging
 import json
-from typing import Dict, Any, Union
+from typing import Dict, Any, Union, List
 
 from src.config.logging import get_logger
 from src.config.settings import get_settings
+import asyncio
+import httpx
+try:
+    from duckduckgo_search import DDGS  # type: ignore
+except Exception:  # pragma: no cover
+    DDGS = None  # type: ignore
+try:
+    import trafilatura  # type: ignore
+except Exception:  # pragma: no cover
+    trafilatura = None  # type: ignore
 from .types import State, Plan, Step, StepType
 
 logger = get_logger("nodes")
@@ -131,7 +141,7 @@ def simple_chat_node(state: Union[State, Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def background_investigation_node(state: Union[State, Dict[str, Any]]) -> Dict[str, Any]:
-    """背景调查节点 - 进行初步的背景信息收集"""
+    """背景调查节点 - 真实 Web 搜索 + 抓取 + 抽取正文（若依赖缺失则退回占位）。"""
     logger.info("背景调查节点运行")
     
     try:
@@ -140,22 +150,37 @@ def background_investigation_node(state: Union[State, Dict[str, Any]]) -> Dict[s
         else:
             research_topic = getattr(state, "research_topic", "")
         
-        # TODO: 实际的搜索逻辑
-        # 现在提供模拟的背景调查结果
-        background_results = f"""
+        if DDGS and trafilatura:
+            hits = DDGS().text(research_topic, max_results=6) if research_topic else []
+            urls = [h.get("href") or h.get("url") for h in hits if isinstance(h, dict)]
+            urls = [u for u in urls if u]
+
+            async def _fetch(url: str) -> str:
+                try:
+                    async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+                        r = await client.get(url)
+                        r.raise_for_status()
+                        html = r.text
+                    text = trafilatura.extract(html, include_comments=False, include_tables=False) or ""
+                    return text.strip()
+                except Exception as e:  # pragma: no cover
+                    logger.warning(f"抓取失败 {url}: {e}")
+                    return ""
+
+            texts: List[str] = asyncio.run(asyncio.gather(*[_fetch(u) for u in urls])) if urls else []
+            bullets = []
+            for u, t in zip(urls, texts):
+                if t:
+                    head = (t.split("\n")[0] if "\n" in t else t)[:120]
+                    bullets.append(f"- 来源: {u}\n  摘要: {head}…")
+            background_results = f"## 关于\"{research_topic}\"的背景信息\n\n" + ("\n".join(bullets) if bullets else "（搜索结果很少或无法抽取正文）")
+        else:
+            # 依赖缺失回退到占位
+            background_results = f"""
 ## 关于"{research_topic}"的背景信息
 
-### 基础概念
-这是一个需要深入研究的主题，涉及多个方面的知识。
-
-### 相关领域
-- 技术发展趋势
-- 实际应用案例
-- 潜在影响分析
-
-### 初步观察
-基于初步调查，这个主题具有重要的研究价值和实际意义。
-        """.strip()
+（依赖 duckduckgo-search 或 trafilatura 不可用，已使用占位摘要）
+            """.strip()
         
         logger.info("背景调查完成")
         

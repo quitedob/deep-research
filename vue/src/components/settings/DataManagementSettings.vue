@@ -11,10 +11,22 @@
     </div>
     <div class="setting-item">
       <span>删除所有聊天</span>
-      <button class="action-button danger">全部删除</button>
+      <button class="action-button danger" @click="handleDeleteAll">全部删除</button>
     </div>
   </div>
 </template>
+
+<script setup>
+import { useChatStore } from '@/store';
+
+const chatStore = useChatStore();
+
+const handleDeleteAll = () => {
+  if (confirm('您确定要删除所有聊天记录吗？此操作不可撤销。')) {
+    chatStore.deleteAllHistories();
+  }
+};
+</script>
 
 <style scoped>
 /* 共享 .setting-item 和 h3 样式 */
