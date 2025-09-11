@@ -1,10 +1,10 @@
-# DeerFlow Deep Research Platform
+# Deep Research Platform
 
 一个基于AI的深度研究平台，集成了智能对话、文档处理、向量搜索、证据链追踪等功能。
 
 ## 🚀 项目概述
 
-DeerFlow是一个现代化的AI研究平台，支持多种LLM提供商，提供智能路由、文档管理、向量搜索等功能。项目采用前后端分离架构，后端基于FastAPI，前端使用Vue 3。
+Deep Research Platform是一个现代化的AI研究平台，支持多种LLM提供商，提供智能路由、文档管理、向量搜索等功能。项目采用前后端分离架构，后端基于FastAPI，前端使用Vue 3，支持本地部署和云端服务。
 
 ## 📋 目录结构
 
@@ -37,11 +37,11 @@ deep-research/
 ### 主要服务端口
 - **后端API服务**: `8000` (FastAPI)
 - **前端开发服务**: `3000` (Vue + Vite)
-- **MySQL数据库**: `3306`
+- **PostgreSQL数据库**: `5432`
 - **Redis缓存**: `6379`
 
 ### 管理工具端口
-- **phpMyAdmin**: `8080` (MySQL管理界面)
+- **pgAdmin**: `8082` (PostgreSQL管理界面)
 - **Redis Commander**: `8081` (Redis管理界面)
 
 ### 外部服务端口
@@ -119,7 +119,7 @@ deep-research/
 - **SQLAlchemy** - ORM数据库操作
 - **PostgreSQL + pgvector** - 向量数据库
 - **Redis** - 缓存和任务队列
-- **Celery** - 异步任务处理
+- **AsyncPG** - PostgreSQL异步驱动
 
 ### 前端技术
 - **Vue 3** - 现代化前端框架
@@ -128,10 +128,12 @@ deep-research/
 - **CSS Variables** - 主题系统
 
 ### AI/ML技术
-- **DeepSeek API** - 主要LLM提供商
-- **Ollama** - 本地LLM服务
+- **DeepSeek API** - 主要LLM提供商（支持chat和reasoner模型）
+- **Ollama** - 本地LLM服务（支持多种本地模型）
+- **Kimi API** - 辅助LLM提供商
 - **pgvector** - 向量相似度搜索
 - **Sentence Transformers** - 文本嵌入
+- **智能路由系统** - 自动选择最佳模型
 
 ## 🚀 快速开始
 
@@ -150,8 +152,10 @@ cp .env.example .env
 ### 2. 启动数据库服务
 
 ```bash
-# 启动PostgreSQL和Redis
+# 启动PostgreSQL和Redis（可选启动管理工具）
 docker-compose -f docker-compose.dev.yml up -d postgres redis
+# 如需启动管理工具，添加 --profile tools
+docker-compose -f docker-compose.dev.yml --profile tools up -d pgadmin redis-commander
 ```
 
 ### 3. 安装Python依赖
@@ -198,7 +202,8 @@ start-frontend.bat   # Windows
 - **前端界面**: http://localhost:3000
 - **后端API**: http://localhost:8000
 - **API文档**: http://localhost:8000/docs
-- **pgAdmin**: http://localhost:8080 (可选)
+- **pgAdmin**: http://localhost:8082 (可选)
+- **Redis Commander**: http://localhost:8081 (可选)
 
 ## 📝 配置说明
 
@@ -207,28 +212,36 @@ start-frontend.bat   # Windows
 # LLM API密钥 (至少配置一个)
 DEEPSEEK_API_KEY=your-deepseek-api-key
 MOONSHOT_API_KEY=your-moonshot-api-key
-OPENAI_API_KEY=your-openai-api-key
 
-# 搜索API密钥
-TAVILY_API_KEY=your-tavily-api-key
+# Ollama本地服务 (可选，如需使用本地模型)
+OLLAMA_BASE_URL=http://localhost:11434/v1
 
 # 数据库连接
-DATABASE_URL=mysql+aiomysql://deerflow:deerflow123@localhost:3306/deerflow
+DATABASE_URL=postgresql+asyncpg://deerflow:deerflow123@localhost:5432/deerflow
 REDIS_URL=redis://localhost:6379/0
+
+# 搜索API密钥 (可选)
+TAVILY_API_KEY=your-tavily-api-key
 ```
 
 ### 可选配置
 ```bash
-# Ollama本地服务
-OLLAMA_BASE_URL=http://localhost:11434/v1
-
 # 文件上传限制
 MAX_FILE_SIZE=52428800  # 50MB
 ALLOWED_FILE_TYPES=.pdf,.docx,.doc,.txt,.md
 
 # 性能配置
 MAX_CONCURRENT_REQUESTS=10
-TASK_WORKER_COUNT=2
+REQUEST_TIMEOUT=300
+
+# 智能路由配置
+TRIAGE_CONFIDENCE_THRESHOLD=0.7
+ENABLE_CACHING=true
+CACHE_TTL=1800
+
+# 日志配置
+LOG_LEVEL=INFO
+ENABLE_REQUEST_LOGGING=true
 ```
 
 ## 🧪 测试
@@ -290,6 +303,12 @@ python test/test_full_integration.py
 4. 推送到分支 (`git push origin feature/AmazingFeature`)
 5. 创建Pull Request
 
+---
+
+**版本**: 1.0.0  
+**最后更新**: 2025-01-16  
+**维护者**: Deep Research Team
+
 ## 📄 许可证
 
 本项目采用MIT许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
@@ -297,12 +316,11 @@ python test/test_full_integration.py
 ## 🆘 支持
 
 如果遇到问题，请：
+
 1. 查看本文档的故障排除部分
 2. 检查 [Issues](../../issues) 中是否有类似问题
 3. 创建新的Issue描述问题
 
 ---
 
-**版本**: 1.0.0  
-**最后更新**: 2025-01-16  
-**维护者**: DeerFlow Team
+**⭐ 如果这个项目对你有帮助，请给我们一个star！**
