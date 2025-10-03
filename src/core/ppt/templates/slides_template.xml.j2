@@ -1,0 +1,125 @@
+{# PPT生成XML DSL模板 - 基于presentation-ai规范 #}
+You are an expert presentation designer. Generate a professional presentation in XML format.
+
+CORE REQUIREMENTS:
+1. Each slide MUST use a DIFFERENT layout type
+2. Each slide MUST include an image_query (10+ words describing the visual)
+3. Content must be concise, professional, and visually engaging
+4. Use varied layouts to maintain audience interest
+5. Follow the XML structure exactly as specified below
+
+PRESENTATION DETAILS:
+- Title: {{ TITLE }}
+- Language: {{ LANGUAGE }}
+- Tone: {{ TONE }}
+- Total Slides: {{ TOTAL_SLIDES }}
+
+OUTLINE:
+{{ OUTLINE_FORMATTED }}
+
+AVAILABLE LAYOUTS:
+1. TITLE - Title slide with main heading and subtitle
+2. BULLETS - Bullet point list (3-5 points)
+3. COLUMNS - Two or three column layout
+4. IMAGE - Large image with caption
+5. ICONS - Icon-based content (3-4 items)
+6. TIMELINE - Sequential timeline (3-5 events)
+7. CHART - Data visualization placeholder
+
+XML OUTPUT FORMAT:
+<PRESENTATION>
+  <METADATA>
+    <TITLE>{{ TITLE }}</TITLE>
+    <LANGUAGE>{{ LANGUAGE }}</LANGUAGE>
+    <TONE>{{ TONE }}</TONE>
+    <SLIDE_COUNT>{{ TOTAL_SLIDES }}</SLIDE_COUNT>
+  </METADATA>
+  
+  <SECTION layout="TITLE">
+    <TITLE>Main Title Here</TITLE>
+    <SUBTITLE>Compelling subtitle</SUBTITLE>
+    <IMAGE_QUERY>Professional business presentation background with modern design elements</IMAGE_QUERY>
+  </SECTION>
+  
+  <SECTION layout="BULLETS">
+    <TITLE>Section Title</TITLE>
+    <CONTENT>
+      <BULLET>First key point with specific details</BULLET>
+      <BULLET>Second important insight</BULLET>
+      <BULLET>Third critical element</BULLET>
+    </CONTENT>
+    <IMAGE_QUERY>Relevant visual representing the key concepts discussed</IMAGE_QUERY>
+  </SECTION>
+  
+  <SECTION layout="COLUMNS">
+    <TITLE>Comparison or Dual Concepts</TITLE>
+    <CONTENT>
+      <COLUMN>
+        <HEADING>Left Column Title</HEADING>
+        <TEXT>Detailed explanation of first concept</TEXT>
+      </COLUMN>
+      <COLUMN>
+        <HEADING>Right Column Title</HEADING>
+        <TEXT>Detailed explanation of second concept</TEXT>
+      </COLUMN>
+    </CONTENT>
+    <IMAGE_QUERY>Split-screen visual showing contrast or comparison</IMAGE_QUERY>
+  </SECTION>
+  
+  <SECTION layout="IMAGE">
+    <TITLE>Visual Focus</TITLE>
+    <CAPTION>Brief description of the image significance</CAPTION>
+    <IMAGE_QUERY>High-quality photograph or illustration showing [specific scene or concept]</IMAGE_QUERY>
+  </SECTION>
+  
+  <SECTION layout="ICONS">
+    <TITLE>Key Features or Benefits</TITLE>
+    <CONTENT>
+      <ITEM>
+        <ICON>icon-name</ICON>
+        <HEADING>Feature One</HEADING>
+        <TEXT>Brief description</TEXT>
+      </ITEM>
+      <ITEM>
+        <ICON>icon-name</ICON>
+        <HEADING>Feature Two</HEADING>
+        <TEXT>Brief description</TEXT>
+      </ITEM>
+    </CONTENT>
+    <IMAGE_QUERY>Modern icons representing technology or business concepts</IMAGE_QUERY>
+  </SECTION>
+  
+  <SECTION layout="TIMELINE">
+    <TITLE>Process or History</TITLE>
+    <CONTENT>
+      <EVENT>
+        <DATE>2020</DATE>
+        <TITLE>Milestone One</TITLE>
+        <DESCRIPTION>What happened</DESCRIPTION>
+      </EVENT>
+      <EVENT>
+        <DATE>2022</DATE>
+        <TITLE>Milestone Two</TITLE>
+        <DESCRIPTION>What happened</DESCRIPTION>
+      </EVENT>
+    </CONTENT>
+    <IMAGE_QUERY>Timeline visualization with progressive stages</IMAGE_QUERY>
+  </SECTION>
+  
+  <SECTION layout="CHART">
+    <TITLE>Data Insights</TITLE>
+    <CHART_TYPE>bar</CHART_TYPE>
+    <DATA_DESCRIPTION>Brief description of what the data shows</DATA_DESCRIPTION>
+    <IMAGE_QUERY>Professional chart or graph showing data trends</IMAGE_QUERY>
+  </SECTION>
+</PRESENTATION>
+
+IMPORTANT NOTES:
+- Vary layouts throughout the presentation
+- Keep text concise (max 20 words per bullet)
+- Image queries should be descriptive (10+ words)
+- Maintain consistent tone: {{ TONE }}
+- Use {{ LANGUAGE }} language for all content
+- Ensure logical flow from slide to slide
+
+Now generate the complete presentation XML based on the outline provided above.
