@@ -27,6 +27,7 @@ from src.api.conversation import router as conversation_router
 from src.api.evidence import router as evidence_router
 from src.api.health import router as health_router
 from src.core.ppt.api.routes import router as ppt_router
+from src.api.agents import router as agents_router
 from src.middleware.monitoring import request_monitoring_middleware
 from src.middleware.security import security_middleware_func
 from src.config.settings import get_settings
@@ -106,6 +107,9 @@ def create_app() -> FastAPI:
 
     # 注册PPT生成路由
     app.include_router(ppt_router)
+    
+    # 注册Agent管理路由
+    app.include_router(agents_router)
     
     @app.on_event("startup")
     async def _startup():

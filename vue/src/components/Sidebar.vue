@@ -1,11 +1,32 @@
 <template>
   <div class="sidebar">
     <div class="sidebar-header">
-      <div class="logo">芝麻编程</div>
+      <div class="logo">Deep Research</div>
       <button class="new-chat-btn" @click="createNewChat">
         <span class="plus-icon">+</span> 新聊天
       </button>
     </div>
+    
+    <!-- 导航菜单 -->
+    <nav class="nav-menu">
+      <router-link to="/" class="nav-item">
+        <i class="fas fa-home"></i>
+        <span>首页</span>
+      </router-link>
+      <router-link to="/research/projects" class="nav-item">
+        <i class="fas fa-project-diagram"></i>
+        <span>研究项目</span>
+      </router-link>
+      <router-link to="/agents" class="nav-item">
+        <i class="fas fa-robot"></i>
+        <span>智能体</span>
+      </router-link>
+      <router-link to="/admin" class="nav-item">
+        <i class="fas fa-cog"></i>
+        <span>设置</span>
+      </router-link>
+    </nav>
+    
     <div class="list-container">
       <HistoryList />
     </div>
@@ -75,6 +96,40 @@ onMounted(() => {
 }
 .plus-icon {
   font-size: 18px;
+}
+
+.nav-menu {
+  margin-bottom: 20px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  margin-bottom: 4px;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: all 0.2s;
+  font-size: 14px;
+}
+
+.nav-item:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+  color: var(--text-primary);
+}
+
+.nav-item.router-link-active {
+  background-color: var(--button-bg);
+  color: var(--button-text);
+}
+
+.nav-item i {
+  width: 20px;
+  text-align: center;
 }
 
 .list-container {
