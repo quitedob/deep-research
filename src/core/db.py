@@ -12,7 +12,7 @@ from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from src.config.settings import get_settings
+from src.config.config_loader import get_settings
 
 
 class DatabaseManager:

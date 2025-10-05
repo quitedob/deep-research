@@ -16,6 +16,8 @@ from .base_llm import (
 # 具体提供者
 from .providers.deepseek_llm import DeepSeekProvider
 from .providers.ollama_llm import OllamaProvider
+from .providers.doubao_llm import DoubaoProvider
+from .providers.kimi_llm import KimiProvider
 
 # 智能路由
 from .router import (
@@ -60,6 +62,8 @@ __all__ = [
     # LLM提供者
     "DeepSeekProvider",
     "OllamaProvider",
+    "DoubaoProvider",
+    "KimiProvider",
     
     # 路由相关
     "SmartModelRouter",

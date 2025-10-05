@@ -1,409 +1,407 @@
 # -*- coding: utf-8 -*-
 """
-Agent管理器服务
-支持动态Agent注册、会话管理和智能调度
+Agent 管理器 V2 - 参考 AgentScope 架构的完整实现
 """
-
-import time
-import logging
 import asyncio
-from typing import Dict, Any, Optional, List
-from dataclasses import dataclass, field
-from datetime import datetime
+import logging
+from typing import Dict, List, Optional, Any
+from datetime import datetime, timedelta
 
-from ..llms.router import SmartModelRouter
-from ..config.settings import get_settings
+from ..agents import AgentBase, AgentConfig, ReActAgent, ResearchAgent, UserAgent
+from ..agents.research_agent import create_research_agents
+from ..message import Msg
 
 logger = logging.getLogger(__name__)
-settings = get_settings()
 
 
-@dataclass
-class AgentConfig:
-    """Agent配置类"""
-    id: str
-    name: str
-    base_name: str
-    system_prompt: str
-    max_output_tokens: int = 4000
-    temperature: float = 0.7
-    description: str = ""
-    model_provider: str = "kimi"
-    capabilities: List[str] = field(default_factory=list)
-
-
-@dataclass
-class AgentSession:
-    """Agent会话类"""
-    timestamp: float = field(default_factory=time.time)
-    history: List[Dict[str, str]] = field(default_factory=list)
-    session_id: str = "default_session"
-    metadata: Dict[str, Any] = field(default_factory=dict)
-
-
-class AgentManager:
-    """Agent管理器 - 支持多Agent协作和智能调度"""
+class AgentManagerV2:
+    """Agent 管理器 - 参考 AgentScope 的完整设计"""
     
     def __init__(self):
-        self.agents: Dict[str, AgentConfig] = {}
-        self.agent_sessions: Dict[str, Dict[str, AgentSession]] = {}
-        self.max_history_rounds = 10
-        self.context_ttl_hours = 24
-        self.llm_router = None
+        self.agents: Dict[str, AgentBase] = {}
+        self.agent_types: Dict[str, type] = {
+            "react": ReActAgent,
+            "research": ResearchAgent,
+            "user": UserAgent
+        }
         
-        # 初始化默认agents
+        # 会话管理
+        self.sessions: Dict[str, Dict[str, Any]] = {}
+        
+        # 协作管理
+        self.collaborations: Dict[str, Dict[str, Any]] = {}
+        
+        # 初始化预定义 Agent
         self._init_default_agents()
         
-        # 启动清理任务
-        try:
-            loop = asyncio.get_running_loop()
-            asyncio.create_task(self._periodic_cleanup())
-        except RuntimeError:
-            pass
+        logger.info("Agent Manager V2 initialized")
     
     def _init_default_agents(self):
-        """初始化默认的研究agents"""
-        # 研究规划agent
-        self.register_agent(AgentConfig(
-            id="research_planner",
-            name="研究规划师",
-            base_name="planner",
-            system_prompt="""你是一个专业的研究规划师。你的职责是：
-1. 分析用户的研究需求
-2. 制定详细的研究计划
-3. 分解任务为可执行的步骤
-4. 评估研究的可行性和所需资源
-
-请以结构化的方式输出研究计划。""",
-            description="负责制定研究计划和任务分解",
-            capabilities=["planning", "task_decomposition", "feasibility_analysis"]
-        ))
+        """初始化默认 Agent"""
+        # 创建研究 Agent
+        research_agents = create_research_agents()
+        for agent_id, agent in research_agents.items():
+            self.agents[agent_id] = agent
         
-        # 信息搜索agent
-        self.register_agent(AgentConfig(
-            id="information_searcher",
-            name="信息搜索专家",
-            base_name="searcher",
-            system_prompt="""你是一个专业的信息搜索专家。你的职责是：
-1. 根据研究主题搜索相关信息
-2. 评估信息来源的可靠性
-3. 提取关键信息和数据
-4. 整理和分类搜索结果
-
-请提供高质量、相关性强的搜索结果。""",
-            description="负责信息检索和来源评估",
-            capabilities=["search", "information_extraction", "source_evaluation"]
+        # 创建用户 Agent
+        user_agent = UserAgent(AgentConfig(
+            name="用户代理",
+            role="user",
+            system_prompt="你是用户的代理，负责处理用户输入和交互。"
         ))
+        self.agents["user_agent"] = user_agent
         
-        # 内容分析agent
-        self.register_agent(AgentConfig(
-            id="content_analyzer",
-            name="内容分析师",
-            base_name="analyzer",
-            system_prompt="""你是一个专业的内容分析师。你的职责是：
-1. 深入分析收集到的信息
-2. 识别关键模式和趋势
-3. 提取核心观点和论据
-4. 评估信息的质量和相关性
-
-请提供深入、客观的分析结果。""",
-            description="负责内容深度分析和洞察提取",
-            capabilities=["analysis", "pattern_recognition", "insight_extraction"]
-        ))
-        
-        # 报告撰写agent
-        self.register_agent(AgentConfig(
-            id="report_writer",
-            name="报告撰写专家",
-            base_name="writer",
-            system_prompt="""你是一个专业的报告撰写专家。你的职责是：
-1. 将分析结果整合成连贯的报告
-2. 确保报告结构清晰、逻辑严密
-3. 使用专业的学术语言
-4. 提供准确的引用和参考文献
-
-请生成高质量、专业的研究报告。""",
-            description="负责报告撰写和内容整合",
-            capabilities=["writing", "synthesis", "formatting"]
-        ))
-        
-        # 质量审查agent
-        self.register_agent(AgentConfig(
-            id="quality_reviewer",
-            name="质量审查员",
-            base_name="reviewer",
-            system_prompt="""你是一个严格的质量审查员。你的职责是：
-1. 审查报告的准确性和完整性
-2. 检查逻辑一致性和论证质量
-3. 验证引用和数据的准确性
-4. 提供具体的改进建议
-
-请提供客观、建设性的审查意见。""",
-            description="负责质量审查和改进建议",
-            capabilities=["review", "fact_checking", "quality_assessment"],
-            temperature=0.3  # 更低的温度以保持客观
-        ))
-        
-        logger.info(f"已初始化 {len(self.agents)} 个默认Agent")
+        logger.info(f"Initialized {len(self.agents)} default agents")
     
-    def register_agent(self, agent_config: AgentConfig):
-        """注册新的Agent"""
-        self.agents[agent_config.id] = agent_config
-        logger.info(f"已注册Agent: {agent_config.id} ({agent_config.name})")
+    def register_agent(self, agent: AgentBase) -> bool:
+        """注册 Agent"""
+        try:
+            if agent.id in self.agents:
+                logger.warning(f"Agent {agent.id} already exists, overwriting")
+            
+            self.agents[agent.id] = agent
+            logger.info(f"Registered agent: {agent.id} ({agent.name})")
+            return True
+        
+        except Exception as e:
+            logger.error(f"Failed to register agent {agent.id}: {e}")
+            return False
     
-    def get_agent(self, agent_id: str) -> Optional[AgentConfig]:
-        """获取Agent配置"""
+    def unregister_agent(self, agent_id: str) -> bool:
+        """注销 Agent"""
+        if agent_id in self.agents:
+            agent = self.agents.pop(agent_id)
+            logger.info(f"Unregistered agent: {agent_id} ({agent.name})")
+            return True
+        else:
+            logger.warning(f"Agent {agent_id} not found")
+            return False
+    
+    def get_agent(self, agent_id: str) -> Optional[AgentBase]:
+        """获取 Agent"""
         return self.agents.get(agent_id)
     
     def list_agents(self) -> List[Dict[str, Any]]:
-        """列出所有可用的Agents"""
-        return [
-            {
-                "id": agent.id,
-                "name": agent.name,
-                "base_name": agent.base_name,
-                "description": agent.description,
-                "capabilities": agent.capabilities
-            }
-            for agent in self.agents.values()
-        ]
+        """列出所有 Agent"""
+        return [agent.to_dict() for agent in self.agents.values()]
     
-    def get_agent_session_history(
-        self,
-        agent_id: str,
-        session_id: str = "default_session"
-    ) -> List[Dict[str, str]]:
-        """获取Agent会话历史"""
-        if agent_id not in self.agent_sessions:
-            self.agent_sessions[agent_id] = {}
-        
-        agent_sessions = self.agent_sessions[agent_id]
-        if session_id not in agent_sessions or self._is_context_expired(
-            agent_sessions[session_id].timestamp
-        ):
-            agent_sessions[session_id] = AgentSession(session_id=session_id)
-        
-        return agent_sessions[session_id].history
+    def get_agents_by_capability(self, capability: str) -> List[AgentBase]:
+        """根据能力获取 Agent"""
+        matching_agents = []
+        for agent in self.agents.values():
+            if capability in agent.config.capabilities:
+                matching_agents.append(agent)
+        return matching_agents
     
-    def update_agent_session_history(
-        self,
-        agent_id: str,
-        user_message: str,
-        assistant_message: str,
-        session_id: str = "default_session"
-    ):
-        """更新Agent会话历史"""
-        if agent_id not in self.agent_sessions:
-            self.agent_sessions[agent_id] = {}
-        
-        agent_sessions = self.agent_sessions[agent_id]
-        if session_id not in agent_sessions or self._is_context_expired(
-            agent_sessions[session_id].timestamp
-        ):
-            agent_sessions[session_id] = AgentSession(session_id=session_id)
-        
-        session_data = agent_sessions[session_id]
-        session_data.history.extend([
-            {"role": "user", "content": user_message},
-            {"role": "assistant", "content": assistant_message}
-        ])
-        session_data.timestamp = time.time()
-        
-        # 限制历史消息数量
-        max_messages = self.max_history_rounds * 2
-        if len(session_data.history) > max_messages:
-            session_data.history = session_data.history[-max_messages:]
-    
-    def _is_context_expired(self, timestamp: float) -> bool:
-        """检查上下文是否过期"""
-        return (time.time() - timestamp) > (self.context_ttl_hours * 3600)
-    
-    async def _periodic_cleanup(self):
-        """定期清理过期的会话上下文"""
-        while True:
-            try:
-                await asyncio.sleep(3600)  # 每小时清理一次
-                
-                for agent_id, sessions in list(self.agent_sessions.items()):
-                    for session_id, session_data in list(sessions.items()):
-                        if self._is_context_expired(session_data.timestamp):
-                            sessions.pop(session_id, None)
-                            logger.debug(f"清理过期上下文: {agent_id}, session {session_id}")
-                    
-                    if not sessions:
-                        self.agent_sessions.pop(agent_id, None)
-                        
-            except Exception as e:
-                logger.error(f"定期清理任务出错: {e}")
+    def get_agents_by_role(self, role: str) -> List[AgentBase]:
+        """根据角色获取 Agent"""
+        matching_agents = []
+        for agent in self.agents.values():
+            if agent.role == role:
+                matching_agents.append(agent)
+        return matching_agents
     
     async def call_agent(
         self,
         agent_id: str,
-        prompt: str,
-        session_id: str = None,
-        context: Optional[Dict[str, Any]] = None
+        message: str,
+        session_id: Optional[str] = None,
+        context: Optional[Dict] = None
     ) -> Dict[str, Any]:
-        """
-        调用指定的Agent
-        
-        Args:
-            agent_id: Agent ID
-            prompt: 用户提示词
-            session_id: 会话ID
-            context: 额外的上下文信息
-            
-        Returns:
-            Dict[str, Any]: 调用结果
-        """
-        # 检查Agent是否存在
-        if agent_id not in self.agents:
+        """调用 Agent"""
+        agent = self.get_agent(agent_id)
+        if not agent:
             return {
-                "status": "error",
-                "error": f"Agent '{agent_id}' 不存在"
+                "success": False,
+                "error": f"Agent {agent_id} not found"
             }
         
-        agent_config = self.agents[agent_id]
-        
-        # 生成会话ID
-        if not session_id:
-            session_id = f"agent_{agent_config.base_name}_default"
-        
         try:
-            # 获取会话历史
-            history = self.get_agent_session_history(agent_id, session_id)
-            
-            # 构建消息序列
-            messages = []
-            
-            # 系统消息
-            messages.append({
-                "role": "system",
-                "content": agent_config.system_prompt
-            })
-            
-            # 添加上下文信息
-            if context:
-                context_str = "\n".join([f"{k}: {v}" for k, v in context.items()])
-                messages.append({
-                    "role": "system",
-                    "content": f"上下文信息:\n{context_str}"
-                })
-            
-            # 历史消息
-            messages.extend(history)
-            
-            # 当前用户输入
-            messages.append({
-                "role": "user",
-                "content": prompt
-            })
-            
-            # 初始化LLM路由器
-            if not self.llm_router:
-                from pathlib import Path
-                self.llm_router = SmartModelRouter.from_conf(
-                    settings.BASE_DIR / "conf.yaml"
-                )
-            
-            # 调用LLM
-            response = await self.llm_router.route_and_chat(
-                task_type="agent_task",
-                messages=messages,
-                estimated_input_tokens=sum(len(m["content"]) for m in messages) // 4,
-                estimated_output_tokens=agent_config.max_output_tokens // 4,
-                temperature=agent_config.temperature,
-                max_tokens=agent_config.max_output_tokens
+            # 创建消息
+            msg = Msg(
+                name="user",
+                content=message,
+                role="user",
+                metadata=context or {}
             )
             
-            if response.get("content"):
-                assistant_response = response["content"]
-                
-                # 更新会话历史
-                self.update_agent_session_history(
-                    agent_id, prompt, assistant_response, session_id
-                )
-                
-                return {
-                    "status": "success",
-                    "result": assistant_response,
-                    "agent_id": agent_id,
-                    "agent_name": agent_config.name
-                }
-            else:
-                return {
-                    "status": "error",
-                    "error": "LLM返回空响应"
-                }
-                
-        except Exception as e:
-            logger.error(f"调用Agent '{agent_id}' 时发生错误: {e}")
+            # 调用 Agent
+            response = await agent(msg)
+            
+            # 记录会话
+            if session_id:
+                self._update_session(session_id, agent_id, msg, response)
+            
             return {
-                "status": "error",
-                "error": str(e)
+                "success": True,
+                "response": response.content,
+                "metadata": response.metadata,
+                "agent_id": agent_id,
+                "agent_name": agent.name
+            }
+        
+        except Exception as e:
+            logger.error(f"Error calling agent {agent_id}: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "agent_id": agent_id
             }
     
     async def collaborate_agents(
         self,
-        task: str,
         agent_ids: List[str],
-        session_id: str = None
+        task: str,
+        collaboration_type: str = "sequential",
+        session_id: Optional[str] = None
     ) -> Dict[str, Any]:
-        """
-        多Agent协作完成任务
+        """Agent 协作"""
+        collaboration_id = f"collab_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         
-        Args:
-            task: 任务描述
-            agent_ids: 参与的Agent IDs
-            session_id: 会话ID
-            
-        Returns:
-            Dict[str, Any]: 协作结果
-        """
-        if not session_id:
-            session_id = f"collab_{int(time.time())}"
-        
-        results = []
-        context = {"task": task}
-        
+        # 验证 Agent 存在
+        agents = []
         for agent_id in agent_ids:
-            # 调用每个Agent
-            result = await self.call_agent(
-                agent_id=agent_id,
-                prompt=task,
-                session_id=session_id,
-                context=context
+            agent = self.get_agent(agent_id)
+            if not agent:
+                return {
+                    "success": False,
+                    "error": f"Agent {agent_id} not found"
+                }
+            agents.append(agent)
+        
+        try:
+            if collaboration_type == "sequential":
+                result = await self._sequential_collaboration(agents, task, collaboration_id)
+            elif collaboration_type == "parallel":
+                result = await self._parallel_collaboration(agents, task, collaboration_id)
+            elif collaboration_type == "hierarchical":
+                result = await self._hierarchical_collaboration(agents, task, collaboration_id)
+            else:
+                return {
+                    "success": False,
+                    "error": f"Unknown collaboration type: {collaboration_type}"
+                }
+            
+            # 记录协作
+            self.collaborations[collaboration_id] = {
+                "agent_ids": agent_ids,
+                "task": task,
+                "type": collaboration_type,
+                "result": result,
+                "timestamp": datetime.now(),
+                "session_id": session_id
+            }
+            
+            return {
+                "success": True,
+                "collaboration_id": collaboration_id,
+                "result": result
+            }
+        
+        except Exception as e:
+            logger.error(f"Collaboration error: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+    
+    async def _sequential_collaboration(
+        self,
+        agents: List[AgentBase],
+        task: str,
+        collaboration_id: str
+    ) -> Dict[str, Any]:
+        """顺序协作"""
+        results = []
+        current_input = task
+        
+        for i, agent in enumerate(agents):
+            msg = Msg(
+                name="user",
+                content=current_input,
+                role="user",
+                metadata={
+                    "collaboration_id": collaboration_id,
+                    "step": i + 1,
+                    "total_steps": len(agents)
+                }
             )
             
-            if result.get("status") == "success":
+            response = await agent(msg)
+            results.append({
+                "agent_id": agent.id,
+                "agent_name": agent.name,
+                "input": current_input,
+                "output": response.content,
+                "metadata": response.metadata
+            })
+            
+            # 下一个 Agent 的输入是当前 Agent 的输出
+            current_input = response.content
+        
+        return {
+            "type": "sequential",
+            "steps": results,
+            "final_output": current_input
+        }
+    
+    async def _parallel_collaboration(
+        self,
+        agents: List[AgentBase],
+        task: str,
+        collaboration_id: str
+    ) -> Dict[str, Any]:
+        """并行协作"""
+        # 创建所有任务
+        tasks = []
+        for i, agent in enumerate(agents):
+            msg = Msg(
+                name="user",
+                content=task,
+                role="user",
+                metadata={
+                    "collaboration_id": collaboration_id,
+                    "agent_index": i
+                }
+            )
+            tasks.append(agent(msg))
+        
+        # 并行执行
+        responses = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # 收集结果
+        results = []
+        for i, (agent, response) in enumerate(zip(agents, responses)):
+            if isinstance(response, Exception):
                 results.append({
-                    "agent_id": agent_id,
-                    "agent_name": result.get("agent_name"),
-                    "result": result.get("result")
+                    "agent_id": agent.id,
+                    "agent_name": agent.name,
+                    "error": str(response)
                 })
-                
-                # 更新上下文，供后续Agent使用
-                context[f"{agent_id}_output"] = result.get("result")
             else:
                 results.append({
-                    "agent_id": agent_id,
-                    "error": result.get("error")
+                    "agent_id": agent.id,
+                    "agent_name": agent.name,
+                    "output": response.content,
+                    "metadata": response.metadata
                 })
         
         return {
-            "status": "success",
-            "task": task,
-            "results": results,
-            "session_id": session_id
+            "type": "parallel",
+            "results": results
         }
+    
+    async def _hierarchical_collaboration(
+        self,
+        agents: List[AgentBase],
+        task: str,
+        collaboration_id: str
+    ) -> Dict[str, Any]:
+        """层次化协作 - 第一个 Agent 作为协调者"""
+        if len(agents) < 2:
+            return await self._sequential_collaboration(agents, task, collaboration_id)
+        
+        coordinator = agents[0]
+        workers = agents[1:]
+        
+        # 协调者分析任务
+        coordinator_msg = Msg(
+            name="user",
+            content=f"请分析以下任务并制定执行计划:\n{task}",
+            role="user",
+            metadata={
+                "collaboration_id": collaboration_id,
+                "role": "coordinator"
+            }
+        )
+        
+        plan_response = await coordinator(coordinator_msg)
+        
+        # 工作者并行执行
+        worker_tasks = []
+        for worker in workers:
+            worker_msg = Msg(
+                name="coordinator",
+                content=f"执行计划:\n{plan_response.content}\n\n原始任务:\n{task}",
+                role="user",
+                metadata={
+                    "collaboration_id": collaboration_id,
+                    "role": "worker"
+                }
+            )
+            worker_tasks.append(worker(worker_msg))
+        
+        worker_responses = await asyncio.gather(*worker_tasks, return_exceptions=True)
+        
+        # 协调者综合结果
+        synthesis_content = f"原始任务:\n{task}\n\n执行计划:\n{plan_response.content}\n\n工作结果:\n"
+        for i, (worker, response) in enumerate(zip(workers, worker_responses)):
+            if isinstance(response, Exception):
+                synthesis_content += f"\n{worker.name}: 执行失败 - {str(response)}"
+            else:
+                synthesis_content += f"\n{worker.name}: {response.content}"
+        
+        synthesis_msg = Msg(
+            name="user",
+            content=f"{synthesis_content}\n\n请综合以上结果，给出最终答案。",
+            role="user",
+            metadata={
+                "collaboration_id": collaboration_id,
+                "role": "synthesis"
+            }
+        )
+        
+        final_response = await coordinator(synthesis_msg)
+        
+        return {
+            "type": "hierarchical",
+            "coordinator": {
+                "agent_id": coordinator.id,
+                "agent_name": coordinator.name,
+                "plan": plan_response.content,
+                "final_output": final_response.content
+            },
+            "workers": [
+                {
+                    "agent_id": worker.id,
+                    "agent_name": worker.name,
+                    "output": response.content if not isinstance(response, Exception) else f"Error: {response}"
+                }
+                for worker, response in zip(workers, worker_responses)
+            ]
+        }
+    
+    def _update_session(
+        self,
+        session_id: str,
+        agent_id: str,
+        input_msg: Msg,
+        output_msg: Msg
+    ):
+        """更新会话记录"""
+        if session_id not in self.sessions:
+            self.sessions[session_id] = {
+                "created_at": datetime.now(),
+                "messages": [],
+                "agents_used": set()
+            }
+        
+        session = self.sessions[session_id]
+        session["messages"].extend([
+            input_msg.to_dict(),
+            output_msg.to_dict()
+        ])
+        session["agents_used"].add(agent_id)
+        session["last_activity"] = datetime.now()
 
 
-# 全局Agent管理器实例
-_agent_manager = None
+# 全局实例
+_agent_manager_v2 = None
 
 
-def get_agent_manager() -> AgentManager:
-    """获取全局Agent管理器实例"""
-    global _agent_manager
-    if _agent_manager is None:
-        _agent_manager = AgentManager()
-    return _agent_manager
+def get_agent_manager_v2() -> AgentManagerV2:
+    """获取全局 Agent Manager V2 实例"""
+    global _agent_manager_v2
+    if _agent_manager_v2 is None:
+        _agent_manager_v2 = AgentManagerV2()
+    return _agent_manager_v2

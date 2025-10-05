@@ -10,7 +10,7 @@ from .base_agent import AgentBase, AgentConfig
 from ..message import Msg, ToolUseBlock, ToolResultBlock, TextBlock
 from ..llms.router import SmartModelRouter
 from ..tools.tool_registry import ToolRegistry
-from ..config.settings import get_settings
+from ..config.config_loader import get_settings
 
 logger = logging.getLogger(__name__)
 

@@ -28,9 +28,17 @@ from src.api.evidence import router as evidence_router
 from src.api.health import router as health_router
 from src.core.ppt.api.routes import router as ppt_router
 from src.api.agents import router as agents_router
+from src.api.admin import router as admin_router
+from src.api.llm_provider import router as llm_provider_router
+from src.api.search import router as search_router
+from src.api.agent_llm_config import router as agent_llm_config_router
+from src.api.ppt import router as ppt_router
+from src.api.ocr import router as ocr_router
+from src.api.file_upload import router as file_upload_router
+from src.api.quota import router as quota_router
 from src.middleware.monitoring import request_monitoring_middleware
 from src.middleware.security import security_middleware_func
-from src.config.settings import get_settings
+from src.config.config_loader import get_settings
 from src.config.logging import setup_logging
 
 settings = get_settings()
@@ -105,20 +113,42 @@ def create_app() -> FastAPI:
     # 注册健康检查路由
     app.include_router(health_router, prefix="/api")
 
-    # 注册PPT生成路由
-    app.include_router(ppt_router)
+    # 注册 PPT 生成路由（新位置）
+    app.include_router(ppt_router, prefix="/api")
     
     # 注册Agent管理路由
-    app.include_router(agents_router)
+    app.include_router(agents_router, prefix="/api")
+    
+    # 注册管理员路由
+    app.include_router(admin_router, prefix="/api")
+    
+    # 注册 LLM 提供商管理路由
+    app.include_router(llm_provider_router, prefix="/api")
+    
+    # 注册搜索路由
+    app.include_router(search_router, prefix="/api")
+    
+    # 注册智能体 LLM 配置路由
+    app.include_router(agent_llm_config_router, prefix="/api")
+    
+    # 注册 OCR 路由
+    app.include_router(ocr_router, prefix="/api")
+    
+    # 注册文件上传路由
+    app.include_router(file_upload_router, prefix="/api")
+    
+    # 注册配额管理路由
+    app.include_router(quota_router, prefix="/api")
     
     @app.on_event("startup")
     async def _startup():
         # 连接缓存（无 Redis 自动回退内存）
         await cache.connect()
         
-        # 初始化数据库并建表（开发期）
+        # 初始化数据库并建表（智能初始化）
         if settings.auto_create_tables:
-            success = await init_database_and_tables(settings.database_url)
+            from src.core.db_init_v2 import initialize_database
+            success = await initialize_database(force_recreate=False)
             if not success:
                 raise RuntimeError("数据库初始化失败")
         
@@ -140,15 +170,6 @@ def create_app() -> FastAPI:
             print("任务工作器已启动")
         except Exception as e:
             print(f"启动任务工作器失败: {e}")
-        
-        # 初始化 pgvector 索引（如果需要）
-        try:
-            from src.rag.pgvector_store import get_pgvector_store
-            pgvector_store = get_pgvector_store()
-            await pgvector_store.create_vector_index('ivfflat')
-            print("pgvector 索引已初始化")
-        except Exception as e:
-            print(f"初始化 pgvector 索引失败: {e}")
         
         print(f"应用启动成功：{settings.app_name} v{settings.app_version}")
         print(f"环境：{settings.environment}")

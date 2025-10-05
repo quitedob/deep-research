@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.db import get_db_session
 from src.sqlmodel.models import User
 from src.service.auth import get_current_user
-from src.config.settings import get_settings
+from src.config.config_loader import get_settings
 
 router = APIRouter(prefix="/llm-config", tags=["llm-config"])
 

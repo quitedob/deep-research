@@ -20,7 +20,7 @@ from src.sqlmodel.models import User, DocumentProcessingJob
 from src.service.auth import get_current_user
 from src.tasks.queue import enqueue_task, get_task_status, TaskPriority
 from src.tasks.document_processor import process_document_task
-from src.config.settings import get_settings
+from src.config.config_loader import get_settings
 from src.config.logging import get_logger
 from .errors import (
     handle_database_error,

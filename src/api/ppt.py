@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-PPT API路由
-
-提供PPT生成、文件上传、编辑等API端点。
+PPT API 路由
+提供 PPT 生成、文件上传、编辑等 API 端点
 """
 
 import logging
@@ -10,13 +9,13 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks
 from pydantic import BaseModel, Field
 
-from src.api.deps import require_auth
-from src.core.ppt.generator import create_presentation
-from src.sqlmodel.models import User
+from .deps import require_auth
+from ..core.ppt.generator import create_presentation
+from ..sqlmodel.models import User
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1/ppt", tags=["ppt"])
+router = APIRouter(prefix="/ppt", tags=["ppt"])
 
 
 # ==================== 请求/响应模型 ====================
@@ -56,20 +55,20 @@ class FileUploadResponse(BaseModel):
     message: str
 
 
-# ==================== API端点 ====================
+# ==================== API 端点 ====================
 
-@router.post("/presentation/create", response_model=PresentationResponse)
+@router.post("/create", response_model=PresentationResponse)
 async def create_presentation_endpoint(
     request: PresentationCreateRequest,
     current_user: User = Depends(require_auth)
 ):
     """
     创建演示文稿
-
-    根据标题、大纲或主题生成完整的PPT文件。
+    
+    根据标题、大纲或主题生成完整的 PPT 文件。
     """
     try:
-        logger.info(f"用户 {current_user.id} 请求创建PPT: {request.title}")
+        logger.info(f"用户 {current_user.id} 请求创建 PPT: {request.title}")
 
         # 构建参数
         params = {
@@ -89,34 +88,34 @@ async def create_presentation_endpoint(
         if request.template:
             params["template"] = request.template
 
-        # 生成PPT
+        # 生成 PPT
         result = await create_presentation(params)
 
         return PresentationResponse(**result)
 
     except Exception as e:
-        logger.error(f"创建PPT失败: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"创建PPT失败: {str(e)}")
+        logger.error(f"创建 PPT 失败: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"创建 PPT 失败: {str(e)}")
 
 
-@router.post("/files/upload", response_model=FileUploadResponse)
+@router.post("/upload", response_model=FileUploadResponse)
 async def upload_file_endpoint(
     file: UploadFile = File(...),
     background_tasks: BackgroundTasks = BackgroundTasks(),
     current_user: User = Depends(require_auth)
 ):
     """
-    上传文件用于PPT生成
-
-    支持上传文档、PDF等文件，系统会提取内容用于增强PPT生成。
+    上传文件用于 PPT 生成
+    
+    支持上传文档、PDF 等文件，系统会提取内容用于增强 PPT 生成。
     """
     try:
         logger.info(f"用户 {current_user.id} 上传文件: {file.filename}")
 
         # TODO: 实现文件上传和处理逻辑
         # 1. 保存文件
-        # 2. 提取内容
-        # 3. 存储到RAG系统
+        # 2. 提取内容（使用 OCR）
+        # 3. 存储到 RAG 系统
 
         file_id = "temp_file_id"
 
@@ -132,15 +131,15 @@ async def upload_file_endpoint(
         raise HTTPException(status_code=500, detail=f"文件上传失败: {str(e)}")
 
 
-@router.post("/files/decompose")
+@router.post("/decompose")
 async def decompose_file_endpoint(
     file_id: str,
     current_user: User = Depends(require_auth)
 ):
     """
     分解文件内容
-
-    将上传的文件分解为可用于PPT生成的结构化内容。
+    
+    将上传的文件分解为可用于 PPT 生成的结构化内容。
     """
     try:
         logger.info(f"用户 {current_user.id} 请求分解文件: {file_id}")
@@ -170,7 +169,7 @@ async def edit_slide_endpoint(
 ):
     """
     编辑单个幻灯片
-
+    
     根据提示重新生成指定幻灯片的内容。
     """
     try:
@@ -178,7 +177,7 @@ async def edit_slide_endpoint(
 
         # TODO: 实现幻灯片编辑逻辑
         # 1. 获取原幻灯片内容
-        # 2. 根据prompt重新生成
+        # 2. 根据 prompt 重新生成
         # 3. 更新幻灯片
         # 4. 返回新内容
 
@@ -194,20 +193,20 @@ async def edit_slide_endpoint(
         raise HTTPException(status_code=500, detail=f"编辑幻灯片失败: {str(e)}")
 
 
-@router.get("/presentation/{presentation_id}")
+@router.get("/{presentation_id}")
 async def get_presentation_endpoint(
     presentation_id: str,
     current_user: User = Depends(require_auth)
 ):
     """
     获取演示文稿信息
-
+    
     返回指定演示文稿的详细信息。
     """
     try:
-        logger.info(f"用户 {current_user.id} 请求获取PPT: {presentation_id}")
+        logger.info(f"用户 {current_user.id} 请求获取 PPT: {presentation_id}")
 
-        # TODO: 实现获取PPT信息逻辑
+        # TODO: 实现获取 PPT 信息逻辑
         # 1. 从数据库查询
         # 2. 返回详细信息
 
@@ -220,20 +219,20 @@ async def get_presentation_endpoint(
         }
 
     except Exception as e:
-        logger.error(f"获取PPT信息失败: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"获取PPT信息失败: {str(e)}")
+        logger.error(f"获取 PPT 信息失败: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"获取 PPT 信息失败: {str(e)}")
 
 
-@router.get("/health")
+@router.get("/health/check")
 async def health_check():
     """
     健康检查
-
-    检查PPT生成服务的健康状态。
+    
+    检查 PPT 生成服务的健康状态。
     """
     try:
-        from src.core.ppt.adapters.deepseek_adapter import DeepSeekAdapter
-        from src.core.ppt.adapters.ollama_adapter import OllamaAdapter
+        from ..core.ppt.adapters.deepseek_adapter import DeepSeekAdapter
+        from ..core.ppt.adapters.ollama_adapter import OllamaAdapter
 
         deepseek = DeepSeekAdapter()
         ollama = OllamaAdapter()

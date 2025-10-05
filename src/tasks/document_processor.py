@@ -36,7 +36,7 @@ try:
 except ImportError:
     REPORTLAB_AVAILABLE = False
 
-from src.config.settings import get_settings
+from src.config.config_loader import get_settings
 from src.sqlmodel.models import DocumentProcessingJob
 from src.core.db import get_db_session
 from sqlalchemy import update, select

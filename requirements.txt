@@ -49,6 +49,12 @@ unstructured>=0.10.0
 ocrmypdf>=15.0.0
 tesseract>=0.1.3
 portalocker>=2.7.0
+pdf2image>=1.16.0
+Pillow>=10.0.0
+python-docx>=1.0.0
+
+# Doubao SDK
+volcengine-python-sdk[ark]>=1.0.0
 
 # Search Tools
 arxiv>=2.1.0

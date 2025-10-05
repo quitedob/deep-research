@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.cache import cache
 from src.core.db import get_db_session
 from src.sqlmodel.models import User, ApiUsageLog
-from src.config.settings import get_settings
+from src.config.config_loader import get_settings
 
 settings = get_settings()
 

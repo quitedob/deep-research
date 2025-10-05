@@ -234,7 +234,7 @@ async def get_health_status():
     # 检查Redis连接
     try:
         import redis.asyncio as redis
-        from src.config.settings import get_settings
+        from src.config.config_loader import get_settings
         settings = get_settings()
         r = redis.from_url(settings.redis_url)
         await r.ping()

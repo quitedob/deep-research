@@ -13,7 +13,7 @@ from typing import Any, Optional
 import redis.asyncio as redis
 from redis.exceptions import ConnectionError
 
-from src.config.settings import get_settings
+from src.config.config_loader import get_settings
 
 
 class Cache:

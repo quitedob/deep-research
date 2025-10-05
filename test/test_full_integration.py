@@ -258,7 +258,7 @@ async def test_configuration():
     print("\n⚙️  测试配置系统...")
     
     try:
-        from src.config.settings import get_settings
+        from src.config.config_loader import get_settings
         
         settings = get_settings()
         

@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 
 from src.llms.router import ModelRouter, LLMMessage
-from src.config.settings import get_settings
+from src.config.config_loader import get_settings
 from src.export.markdown import MarkdownExporter
 from src.export.ppt import PPTExporter
 

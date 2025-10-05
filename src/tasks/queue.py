@@ -15,7 +15,7 @@ from enum import Enum
 
 import redis.asyncio as redis
 from pydantic import BaseModel, Field
-from src.config.settings import get_settings
+from src.config.config_loader import get_settings
 
 settings = get_settings()
 

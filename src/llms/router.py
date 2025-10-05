@@ -12,6 +12,7 @@ import logging
 from src.llms.providers.ollama_llm import OllamaProvider
 from src.llms.providers.deepseek_llm import DeepSeekProvider
 from src.llms.providers.kimi_llm import KimiProvider
+from src.llms.providers.doubao_llm import DoubaoProvider
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +122,13 @@ class SmartModelRouter:
             api_key=os.getenv("MOONSHOT_API_KEY", ""),
             base_url=os.getenv("MOONSHOT_API_BASE", self.conf.get("KIMI_BASE_URL", "https://api.moonshot.ai/v1")),
         )
+        
+        # Doubao / 豆包（需要 API Key）
+        self.providers["doubao"] = DoubaoProvider(
+            model_name=self.conf.get("DOUBAO_MODEL", "doubao-seed-1-6-flash-250615"),
+            api_key=os.getenv("DOUBAO_API_KEY", ""),
+            base_url=self.conf.get("DOUBAO_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3"),
+        )
 
     def _init_model_capabilities(self) -> None:
         """初始化模型能力信息"""
@@ -160,6 +168,18 @@ class SmartModelRouter:
                 input_cost_per_1k=0.024, output_cost_per_1k=0.024,
                 max_tokens_per_minute=80000, max_requests_per_minute=40,
                 quality_score=0.95, speed_score=0.7
+            ),
+            "doubao:doubao-seed-1-6-flash-250615": ModelCapability(
+                name="doubao-seed-1-6-flash-250615", provider="doubao", context_window=32768,
+                input_cost_per_1k=0.0003, output_cost_per_1k=0.0006,  # 估算价格
+                max_tokens_per_minute=200000, max_requests_per_minute=100,
+                quality_score=0.88, speed_score=0.95  # 快速响应
+            ),
+            "doubao:doubao-1-5-vision-pro-250328": ModelCapability(
+                name="doubao-1-5-vision-pro-250328", provider="doubao", context_window=32768,
+                input_cost_per_1k=0.0005, output_cost_per_1k=0.001,  # 估算价格
+                max_tokens_per_minute=150000, max_requests_per_minute=80,
+                quality_score=0.92, speed_score=0.85  # 视觉理解模型
             )
         }
 
