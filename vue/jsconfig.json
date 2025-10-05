@@ -7,5 +7,5 @@
       "@rag/*": ["../src/rag/*"]
     }
   },
-  "exclude": ["node_modules", "dist"]
+  "exclude": ["node_modules", "dist", "**/*.updated.vue", "**/*_updated.vue"]
 }

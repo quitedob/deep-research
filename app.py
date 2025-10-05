@@ -147,7 +147,7 @@ def create_app() -> FastAPI:
         
         # 初始化数据库并建表（智能初始化）
         if settings.auto_create_tables:
-            from src.core.db_init_v2 import initialize_database
+            from src.core.db_init import initialize_database
             success = await initialize_database(force_recreate=False)
             if not success:
                 raise RuntimeError("数据库初始化失败")

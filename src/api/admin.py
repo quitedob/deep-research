@@ -687,7 +687,7 @@ async def system_health_check(
 ):
     """系统健康检查"""
     try:
-        from ..core.db_init_v2 import check_database_health
+        from ..core.db_init import check_database_health
         
         # 数据库健康检查
         db_health = await check_database_health()

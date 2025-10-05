@@ -11,7 +11,7 @@ from pydantic import BaseModel
 
 from ..api.deps import require_auth
 from ..sqlmodel.models import User
-from ..service.agent_manager_v2 import get_agent_manager_v2
+from ..service.agent_manager import get_agent_manager_v2
 
 logger = logging.getLogger(__name__)
 

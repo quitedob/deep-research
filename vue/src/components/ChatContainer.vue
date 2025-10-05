@@ -71,8 +71,13 @@ const scenarioCards = [
 ];
 
 const selectSceneFromCard = (scenario) => {
-  const messageText = `你好，我想生成一份关于“${scenario}”的研究报告`;
-  emit('send-message-from-container', messageText);
+  if (scenario === 'ppt') {
+    // 打开PPT生成器
+    emit('open-ppt-generator');
+  } else {
+    const messageText = `你好，我想生成一份关于"${scenario}"的研究报告`;
+    emit('send-message-from-container', messageText);
+  }
 };
 
 const scrollToBottom = () => {
