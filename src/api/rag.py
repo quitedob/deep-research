@@ -80,12 +80,20 @@ async def upload_document_for_rag(
     支持的文件格式：.docx, .doc, .txt, .md, .pdf
     """
     try:
-        # 检查文件大小
-        if file.size > settings.max_file_size:
-            raise HTTPException(
+        # 检查文件大小（UploadFile没有size属性，需要读取内容）
+        file_content = await file.read()
+        file_size = len(file_content)
+
+        if file_size > settings.max_file_size:
+            return create_error_response(
+                code=ErrorCodes.VALIDATION_ERROR,
+                message=f"文件大小超过限制：{settings.max_file_size} 字节",
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail=f"文件大小超过限制：{settings.max_file_size} 字节"
+                details={"file_size": file_size, "max_size": settings.max_file_size}
             )
+
+        # 重置文件指针以便后续读取
+        await file.seek(0)
         
         # 检查文件类型
         file_extension = Path(file.filename).suffix.lower()
@@ -357,6 +365,7 @@ async def delete_document(
 @router.post("/document/{job_id}/retry")
 async def retry_document_processing(
     job_id: str,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session)
 ):
@@ -391,7 +400,6 @@ async def retry_document_processing(
         await db.commit()
         
         # 重新加入处理队列
-        background_tasks = BackgroundTasks()
         background_tasks.add_task(
             _process_document_background,
             str(job_id),
@@ -692,15 +700,17 @@ async def upload_file_to_knowledge_base(
                 detail=f"知识库 '{kb_name}' 不存在"
             )
         
-        # 检查文件大小
-        if file.size > MAX_FILE_SIZE_MB * 1024 * 1024:
-            raise HTTPException(
-                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail=f"文件大小超过限制：{MAX_FILE_SIZE_MB}MB"
-            )
-        
-        # 读取文件内容
+        # 读取文件内容并检查大小
         file_bytes = await file.read()
+        file_size = len(file_bytes)
+
+        if file_size > MAX_FILE_SIZE_MB * 1024 * 1024:
+            return create_error_response(
+                code=ErrorCodes.VALIDATION_ERROR,
+                message=f"文件大小超过限制：{MAX_FILE_SIZE_MB}MB",
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                details={"file_size": file_size, "max_size": MAX_FILE_SIZE_MB * 1024 * 1024}
+            )
         
         # 处理文件并获取文本路径
         txt_path = await FileProcessor.save_and_process_file(

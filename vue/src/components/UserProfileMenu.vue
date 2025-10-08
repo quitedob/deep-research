@@ -12,7 +12,7 @@
           <span class="theme-icon">{{ currentTheme === 'dark' ? '☀️' : '🌙' }}</span>
         </div>
         <div class="menu-divider"></div>
-        <a href="#" class="menu-item logout">注销</a>
+        <a href="#" class="menu-item logout" @click.prevent="handleLogout">注销</a>
       </div>
     </div>
   </div>
@@ -20,10 +20,12 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue';
+import { useRouter } from 'vue-router';
 import { useChatStore } from '@/store'; // 1. 引入 useChatStore
 
 const props = defineProps({ currentTheme: String });
 const emit = defineEmits(['toggle-theme']);
+const router = useRouter();
 const isMenuOpen = ref(false);
 const menuRef = ref(null);
 const chatStore = useChatStore(); // 2. 获取 store 实例
@@ -35,6 +37,28 @@ const onToggleTheme = () => { emit('toggle-theme'); };
 const openSettings = () => {
   chatStore.openSettingsModal();
   isMenuOpen.value = false; // 点击后关闭用户菜单
+};
+
+// 4. 新增方法：处理用户注销
+const handleLogout = () => {
+  console.log('[UserProfileMenu] 开始注销流程');
+
+  // 清除所有认证相关的存储
+  localStorage.removeItem('auth_token');
+  localStorage.removeItem('auth_username');
+  localStorage.removeItem('user');
+  sessionStorage.removeItem('auth_token');
+  sessionStorage.removeItem('auth_username');
+  sessionStorage.removeItem('user');
+
+  console.log('[UserProfileMenu] 已清除所有认证信息');
+
+  // 关闭菜单
+  isMenuOpen.value = false;
+
+  // 重定向到登录页面
+  console.log('[UserProfileMenu] 重定向到登录页面');
+  router.push('/login');
 };
 
 const handleClickOutside = (event) => {

@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from ..api.deps import require_auth
+from ..api.errors import create_error_response, ErrorCodes, handle_database_error, handle_not_found_error, APIException
 from ..sqlmodel.models import User
 from ..service.agent_manager import get_agent_manager_v2
 
@@ -77,7 +78,7 @@ async def list_agents(
         ]
     except Exception as e:
         logger.error(f"Error listing agents: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return handle_database_error(e)
 
 
 @router.get("/{agent_id}", response_model=AgentResponse)
@@ -91,7 +92,7 @@ async def get_agent_info(
         agent = manager.get_agent(agent_id)
         
         if not agent:
-            raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
+            return handle_not_found_error(f"Agent '{agent_id}'")
         
         agent_dict = agent.to_dict()
         return AgentResponse(
@@ -105,7 +106,7 @@ async def get_agent_info(
         raise
     except Exception as e:
         logger.error(f"Error getting agent info: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return handle_database_error(e)
 
 
 @router.post("/call", response_model=AgentCallResponse)
@@ -132,7 +133,7 @@ async def call_agent(
         )
     except Exception as e:
         logger.error(f"Error calling agent: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return handle_database_error(e)
 
 
 @router.post("/collaborate", response_model=CollaborationResponse)
@@ -151,7 +152,11 @@ async def collaborate_agents(
         )
         
         if not result.get("success"):
-            raise HTTPException(status_code=400, detail=result.get("error"))
+            raise APIException(
+                code=ErrorCodes.BUSINESS_LOGIC_ERROR,
+                message=result.get("error"),
+                status_code=400
+            )
         
         # 格式化结果以匹配响应模型
         collaboration_result = result.get("result", {})
@@ -176,7 +181,7 @@ async def collaborate_agents(
         raise
     except Exception as e:
         logger.error(f"Error in agent collaboration: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return handle_database_error(e)
 
 
 @router.get("/sessions/{session_id}/history")
@@ -189,7 +194,7 @@ async def get_session_history(
         manager = get_agent_manager_v2()
         
         if session_id not in manager.sessions:
-            raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
+            return handle_not_found_error(f"Session '{session_id}'")
         
         session = manager.sessions[session_id]
         
@@ -204,4 +209,4 @@ async def get_session_history(
         raise
     except Exception as e:
         logger.error(f"Error getting session history: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return handle_database_error(e)

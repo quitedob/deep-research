@@ -147,20 +147,23 @@
             <p>请在 <code>.env</code> 文件中添加以下配置：</p>
             
             <div v-if="selectedProviderId === 'doubao'" class="config-code">
-              <pre>DOUBAO_API_KEY=your_doubao_api_key_here
+              <pre>DOUBAO_API_KEY=***
 DOUBAO_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
 DOUBAO_MODEL=doubao-seed-1-6-flash-250615</pre>
+              <p class="security-note">🔒 API密钥已隐藏，请在环境变量中配置</p>
             </div>
-            
+
             <div v-if="selectedProviderId === 'kimi'" class="config-code">
-              <pre>KIMI_API_KEY=your_kimi_api_key_here
+              <pre>KIMI_API_KEY=***
 KIMI_BASE_URL=https://api.moonshot.cn/v1
 KIMI_MODEL=moonshot-v1-8k</pre>
+              <p class="security-note">🔒 API密钥已隐藏，请在环境变量中配置</p>
             </div>
-            
+
             <div v-if="selectedProviderId === 'deepseek'" class="config-code">
-              <pre>DEEPSEEK_API_KEY=your_deepseek_api_key_here
+              <pre>DEEPSEEK_API_KEY=***
 DEEPSEEK_BASE_URL=https://api.deepseek.com/v1</pre>
+              <p class="security-note">🔒 API密钥已隐藏，请在环境变量中配置</p>
             </div>
             
             <div v-if="selectedProviderId === 'ollama'" class="config-code">

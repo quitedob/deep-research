@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..api.deps import require_auth
+from ..api.errors import create_error_response, ErrorCodes, handle_database_error, handle_not_found_error, APIException
 from ..sqlmodel.models import User
 from ..core.db import get_async_session
 from ..config.config_loader import get_settings
@@ -161,7 +162,7 @@ async def list_llm_providers(
     
     except Exception as e:
         logger.error(f"获取 LLM 提供商列表失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return handle_database_error(e)
 
 
 @router.get("/current", response_model=LLMProviderConfigResponse)
@@ -194,7 +195,7 @@ async def get_current_provider(
     
     except Exception as e:
         logger.error(f"获取当前 LLM 提供商失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return handle_database_error(e)
 
 
 @router.get("/{provider_id}", response_model=LLMProviderInfo)
@@ -207,7 +208,7 @@ async def get_provider_detail(
     """
     try:
         if provider_id not in LLM_PROVIDERS:
-            raise HTTPException(status_code=404, detail=f"提供商 '{provider_id}' 不存在")
+            return handle_not_found_error(f"LLM提供商 '{provider_id}'")
         
         provider_data = LLM_PROVIDERS[provider_id]
         current_default = settings.default_llm_provider
@@ -227,7 +228,7 @@ async def get_provider_detail(
         raise
     except Exception as e:
         logger.error(f"获取 LLM 提供商详情失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return handle_database_error(e)
 
 
 @router.post("/set-default")
@@ -240,21 +241,26 @@ async def set_default_provider(
     """
     # 检查管理员权限
     if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="需要管理员权限")
+        raise APIException(
+            code=ErrorCodes.FORBIDDEN,
+            message="需要管理员权限",
+            status_code=403
+        )
     
     try:
         provider_id = request.provider_id
         
         # 验证提供商是否存在
         if provider_id not in LLM_PROVIDERS:
-            raise HTTPException(status_code=404, detail=f"提供商 '{provider_id}' 不存在")
+            return handle_not_found_error(f"LLM提供商 '{provider_id}'")
         
         # 检查提供商是否可用
         provider_data = LLM_PROVIDERS[provider_id]
         if not provider_data["api_key_configured"]:
-            raise HTTPException(
-                status_code=400,
-                detail=f"提供商 '{provider_id}' 未配置 API Key，无法设置为默认"
+            raise APIException(
+                code=ErrorCodes.BUSINESS_LOGIC_ERROR,
+                message=f"提供商 '{provider_id}' 未配置 API Key，无法设置为默认",
+                status_code=400
             )
         
         # 更新默认提供商（注意：这里只是更新内存中的值，重启后会恢复）
@@ -274,7 +280,7 @@ async def set_default_provider(
         raise
     except Exception as e:
         logger.error(f"设置默认 LLM 提供商失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return handle_database_error(e)
 
 
 @router.get("/test/{provider_id}")
@@ -287,7 +293,7 @@ async def test_provider_connection(
     """
     try:
         if provider_id not in LLM_PROVIDERS:
-            raise HTTPException(status_code=404, detail=f"提供商 '{provider_id}' 不存在")
+            return handle_not_found_error(f"LLM提供商 '{provider_id}'")
         
         provider_data = LLM_PROVIDERS[provider_id]
         
@@ -316,4 +322,4 @@ async def test_provider_connection(
         raise
     except Exception as e:
         logger.error(f"测试 LLM 提供商连接失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return handle_database_error(e)

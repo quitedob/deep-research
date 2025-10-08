@@ -65,7 +65,7 @@
 <script setup>
 import { ref, computed, onMounted, reactive } from 'vue';
 import { useRouter } from 'vue-router';
-import { loginUser, handleAPIError } from '@/services/api.js';
+import { loginUser, handleAPIError, authAPI } from '@/services/api.js';
 
 const router = useRouter();
 const username = ref('');
@@ -101,13 +101,34 @@ const doLogin = async () => {
 
   try {
     submitting.value = true;
+    console.log('[Login] 开始登录流程', { username: username.value, rememberMe: rememberMe.value });
+
     const data = await loginUser(username.value, password.value);
+    console.log('[Login] 登录响应', { token: data.token?.substring(0, 20) + '...', username: data.username });
+
     const storage = rememberMe.value ? localStorage : sessionStorage;
     storage.setItem('auth_token', data.token);
     storage.setItem('auth_username', data.username);
-    const redirect = router.currentRoute.value.query?.redirect || '/';
-    router.push(String(redirect));
+    console.log('[Login] Token已保存到', rememberMe.value ? 'localStorage' : 'sessionStorage');
+
+    // 获取用户详细信息（包括角色）
+    console.log('[Login] 获取用户详细信息...');
+    const userInfo = await authAPI.getCurrentUser();
+    console.log('[Login] 用户信息', { id: userInfo.id, username: userInfo.username, role: userInfo.role, email: userInfo.email });
+
+    storage.setItem('user', JSON.stringify(userInfo));
+
+    // 根据角色自动分流
+    const redirectPath = userInfo.role === 'admin' ? '/admin' : '/';
+    const redirect = router.currentRoute.value.query?.redirect;
+    console.log('[Login] 重定向路径计算', { redirectPath, redirect, userRole: userInfo.role });
+
+    // 如果有指定重定向且是管理员，则优先使用重定向，否则使用角色分流
+    const finalRedirect = (redirect && userInfo.role === 'admin') ? redirect : redirectPath;
+    console.log('[Login] 最终重定向到', finalRedirect);
+    router.push(String(finalRedirect));
   } catch (e) {
+    console.error('[Login] 登录失败', e);
     alert(handleAPIError(e));
   } finally {
     submitting.value = false;
@@ -116,7 +137,9 @@ const doLogin = async () => {
 
 onMounted(() => {
   const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
+  console.log('[Login] 页面加载检查token', { hasToken: !!token, source: localStorage.getItem('auth_token') ? 'localStorage' : 'sessionStorage' });
   if (token) {
+    console.log('[Login] 发现已存在token，重定向到首页');
     router.replace('/');
   }
 });

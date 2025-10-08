@@ -3,12 +3,31 @@
 // API基础URL配置 - 支持环境变量或默认值
 const API_BASE_URL = (typeof import.meta.env !== 'undefined' && import.meta.env.VITE_APP_API_BASE_URL)
   ? import.meta.env.VITE_APP_API_BASE_URL
-  : 'http://localhost:8000/api';
+  : '/api'; // 使用相对路径，通过Vite代理到后端
+
+// CSRF Token管理
+let csrfToken = null;
+
+// 获取CSRF token
+async function getCSRFToken() {
+  if (!csrfToken) {
+    // 通过一个GET请求获取CSRF token
+    const response = await fetch(`${API_BASE_URL}/health`, {
+      method: 'GET',
+      credentials: 'include'
+    });
+    if (response.ok) {
+      csrfToken = response.headers.get('X-CSRF-Token');
+    }
+  }
+  return csrfToken;
+}
 
 // 通用请求函数
 async function apiRequest(endpoint, options = {}) {
   const url = `${API_BASE_URL}${endpoint}`;
-  
+  console.log('[API] 请求开始', { endpoint, method: options.method || 'GET', url });
+
   const defaultOptions = {
     headers: {
       'Content-Type': 'application/json',
@@ -19,17 +38,60 @@ async function apiRequest(endpoint, options = {}) {
 
   const config = { ...defaultOptions, ...options };
 
+  // 添加认证token
+  const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
+  if (token) {
+    config.headers['Authorization'] = `Bearer ${token}`;
+    console.log('[API] 已添加JWT token到请求头');
+  } else {
+    console.log('[API] 未找到JWT token，请求可能需要认证');
+  }
+
+  // 对于POST/PUT/PATCH/DELETE请求，添加CSRF token
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(config.method?.toUpperCase())) {
+    const csrfToken = await getCSRFToken();
+    if (csrfToken) {
+      config.headers['X-CSRF-Token'] = csrfToken;
+      console.log('[API] 已添加CSRF token到请求头');
+    }
+  }
+
+  console.log('[API] 发送请求', { url, method: config.method, headers: { ...config.headers, Authorization: config.headers.Authorization ? 'Bearer [TOKEN]' : undefined } });
+
   try {
     const response = await fetch(url, config);
-    
+    console.log('[API] 收到响应', { url, status: response.status, ok: response.ok });
+
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
+      console.log('[API] 请求失败', { status: response.status, errorData });
+
+      // 如果是CSRF错误，清空token并重试
+      if (response.status === 403 && errorData.detail?.includes('CSRF')) {
+        console.log('[API] CSRF错误，尝试重新获取token并重试');
+        csrfToken = null;
+        const newToken = await getCSRFToken();
+        if (newToken) {
+          config.headers['X-CSRF-Token'] = newToken;
+          console.log('[API] 使用新CSRF token重试请求');
+          const retryResponse = await fetch(url, config);
+          console.log('[API] 重试响应', { status: retryResponse.status, ok: retryResponse.ok });
+          if (!retryResponse.ok) {
+            const retryErrorData = await retryResponse.json().catch(() => ({}));
+            throw new Error(retryErrorData.detail || `HTTP ${retryResponse.status}: ${retryResponse.statusText}`);
+          }
+          return await retryResponse.json();
+        }
+      }
+
       throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`);
     }
 
-    return await response.json();
+    const responseData = await response.json();
+    console.log('[API] 请求成功', { url, hasData: !!responseData, dataKeys: Object.keys(responseData) });
+    return responseData;
   } catch (error) {
-    console.error('API请求失败:', error);
+    console.error('[API] 请求异常', { url, error: error.message, stack: error.stack });
     throw error;
   }
 }
@@ -37,22 +99,34 @@ async function apiRequest(endpoint, options = {}) {
 // 认证相关API
 export const authAPI = {
   // 用户登录
-  login: (credentials) => apiRequest('/auth/login', {
-    method: 'POST',
-    body: JSON.stringify(credentials),
-  }),
+  login: (credentials) => {
+    console.log('[AuthAPI] 用户登录请求', { username: credentials.username });
+    return apiRequest('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(credentials),
+    });
+  },
 
   // 用户注册
-  register: (userData) => apiRequest('/auth/register', {
-    method: 'POST',
-    body: JSON.stringify(userData),
-  }),
+  register: (userData) => {
+    console.log('[AuthAPI] 用户注册请求', { username: userData.username, email: userData.email });
+    return apiRequest('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(userData),
+    });
+  },
 
   // 获取当前用户信息
-  getCurrentUser: () => apiRequest('/auth/me'),
+  getCurrentUser: () => {
+    console.log('[AuthAPI] 获取当前用户信息');
+    return apiRequest('/auth/me');
+  },
 
   // 刷新令牌
-  refreshToken: () => apiRequest('/auth/refresh'),
+  refreshToken: () => {
+    console.log('[AuthAPI] 刷新令牌请求');
+    return apiRequest('/auth/refresh');
+  },
 };
 
 // 聊天相关API

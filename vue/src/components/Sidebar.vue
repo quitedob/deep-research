@@ -32,6 +32,10 @@
           <i class="fas fa-shield-alt"></i>
           <span>管理员控制台</span>
         </router-link>
+        <router-link to="/llm-provider-settings" class="nav-item admin-only">
+          <i class="fas fa-server"></i>
+          <span>LLM提供商设置</span>
+        </router-link>
       </template>
       
       <router-link to="/admin" class="nav-item">

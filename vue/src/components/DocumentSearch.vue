@@ -264,6 +264,7 @@ const getPreviewText = (content, snippet) => {
 const performSearch = async () => {
   if (!searchQuery.value.trim()) return
 
+  console.log('开始搜索:', searchQuery.value)
   searching.value = true
   searched.value = true
   const startTime = Date.now()
@@ -292,11 +293,13 @@ const performSearch = async () => {
     }
 
     const searchData = await searchResponse.json()
+    console.log('搜索结果:', searchData)
     searchResults.value = searchData.results || []
     totalResults.value = searchData.total || 0
 
     // 如果需要包含证据链，获取相关证据
     if (includeEvidence.value && searchResults.value.length > 0) {
+      console.log('加载相关证据...')
       await loadRelatedEvidence()
     }
 

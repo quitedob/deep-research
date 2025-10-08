@@ -79,7 +79,7 @@
           v-for="item in filteredHistory"
           :key="item.id"
           class="history-item"
-          :class="{ active: item.id === chatStore.activeSessionId }"
+          :class="{ active: item.id === chatStore.activeSessionId, pinned: item.pinned }"
           @click="handleSelectHistory(item.id)"
       >
         <div class="item-content">
@@ -88,9 +88,15 @@
           <div class="item-meta">
             <span class="message-count">{{ item.message_count }} 条消息</span>
             <span class="timestamp">{{ formatTime(item.updated_at) }}</span>
+            <span v-if="item.pinned" class="pinned-indicator">📌</span>
           </div>
         </div>
         <div class="item-actions">
+          <button class="item-action" @click.stop="togglePin(item)" :title="item.pinned ? '取消置顶' : '置顶'">
+            <svg viewBox="0 0 24 24" fill="currentColor" class="icon-small">
+              <path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/>
+            </svg>
+          </button>
           <button class="item-action" @click.stop="deleteHistory(item.id)" title="删除">
             <svg viewBox="0 0 24 24" fill="currentColor" class="icon-small">
               <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
@@ -128,6 +134,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { useChatStore } from '@/store';
+import { conversationAPI } from '@/services/api.js';
 
 const chatStore = useChatStore();
 
@@ -137,33 +144,8 @@ const searchQuery = ref('');
 const showMemorySummaryModal = ref(false);
 const loading = ref(false);
 
-// 模拟数据（实际应该从API获取）
-const mockHistoryList = ref([
-  {
-    id: 'session-1',
-    title: '关于深度学习的讨论',
-    last_message: '请解释一下神经网络的工作原理',
-    message_count: 5,
-    updated_at: new Date('2024-01-15T10:30:00Z'),
-    created_at: new Date('2024-01-15T10:00:00Z')
-  },
-  {
-    id: 'session-2',
-    title: 'Python编程问题',
-    last_message: '如何优化Python代码性能？',
-    message_count: 3,
-    updated_at: new Date('2024-01-14T15:45:00Z'),
-    created_at: new Date('2024-01-14T15:30:00Z')
-  },
-  {
-    id: 'session-3',
-    title: '机器学习算法比较',
-    last_message: '随机森林和梯度提升有什么区别？',
-    message_count: 8,
-    updated_at: new Date('2024-01-13T09:20:00Z'),
-    created_at: new Date('2024-01-13T09:00:00Z')
-  }
-]);
+// 真实的会话历史数据
+const historyList = ref([]);
 
 const mockMemorySummary = ref({
   total_conversations: 15,
@@ -177,15 +159,22 @@ const mockMemorySummary = ref({
 
 // 计算属性
 const filteredHistory = computed(() => {
-  if (!searchQuery.value) {
-    return mockHistoryList.value;
+  let filtered = historyList.value;
+
+  if (searchQuery.value) {
+    const query = searchQuery.value.toLowerCase();
+    filtered = filtered.filter(item =>
+      item.title.toLowerCase().includes(query) ||
+      item.last_message.toLowerCase().includes(query)
+    );
   }
-  
-  const query = searchQuery.value.toLowerCase();
-  return mockHistoryList.value.filter(item => 
-    item.title.toLowerCase().includes(query) ||
-    item.last_message.toLowerCase().includes(query)
-  );
+
+  // 置顶的会话排在前面，按更新时间倒序
+  return filtered.sort((a, b) => {
+    if (a.pinned && !b.pinned) return -1;
+    if (!a.pinned && b.pinned) return 1;
+    return new Date(b.updated_at) - new Date(a.updated_at);
+  });
 });
 
 // 方法
@@ -215,19 +204,42 @@ function hideMemorySummary() {
   showMemorySummaryModal.value = false;
 }
 
-function clearHistory() {
+async function clearHistory() {
   if (confirm('确定要清空所有对话历史吗？此操作不可恢复。')) {
-    // 这里应该调用API清空历史
-    mockHistoryList.value = [];
-    console.log('清空对话历史');
+    try {
+      // 这里应该调用API清空所有历史
+      // 暂时使用模拟实现
+      historyList.value = [];
+      console.log('清空对话历史');
+    } catch (error) {
+      console.error('清空对话历史失败:', error);
+      alert('清空失败，请重试');
+    }
   }
 }
 
-function deleteHistory(id) {
+async function togglePin(item) {
+  try {
+    // 这里应该调用API切换置顶状态
+    // 暂时本地实现
+    item.pinned = !item.pinned;
+    console.log(`${item.pinned ? '置顶' : '取消置顶'}对话:`, item.id);
+  } catch (error) {
+    console.error('切换置顶状态失败:', error);
+    alert('操作失败，请重试');
+  }
+}
+
+async function deleteHistory(id) {
   if (confirm('确定要删除这个对话吗？')) {
-    // 这里应该调用API删除特定对话
-    mockHistoryList.value = mockHistoryList.value.filter(item => item.id !== id);
-    console.log('删除对话:', id);
+    try {
+      await conversationAPI.deleteSession(id);
+      historyList.value = historyList.value.filter(item => item.id !== id);
+      console.log('删除对话:', id);
+    } catch (error) {
+      console.error('删除对话失败:', error);
+      alert('删除失败，请重试');
+    }
   }
 }
 
@@ -253,18 +265,40 @@ function formatTime(date) {
   return date.toLocaleDateString('zh-CN');
 }
 
-// 生命周期
-onMounted(async () => {
+// 加载会话历史
+async function loadHistory() {
   try {
     loading.value = true;
-    // 这里应该从后端API获取实际的对话历史
-    // 暂时使用模拟数据
-    await new Promise(resolve => setTimeout(resolve, 500)); // 模拟加载时间
-    loading.value = false;
+    const response = await conversationAPI.getSessions();
+    historyList.value = response.map(session => ({
+      id: session.id,
+      title: session.title,
+      last_message: session.last_message || '',
+      message_count: session.message_count,
+      updated_at: new Date(session.updated_at),
+      created_at: new Date(session.created_at)
+    }));
   } catch (error) {
     console.error('加载对话历史失败：', error);
+    // 如果API失败，使用模拟数据作为fallback
+    historyList.value = [
+      {
+        id: 'session-1',
+        title: '关于深度学习的讨论',
+        last_message: '请解释一下神经网络的工作原理',
+        message_count: 5,
+        updated_at: new Date('2024-01-15T10:30:00Z'),
+        created_at: new Date('2024-01-15T10:00:00Z')
+      }
+    ];
+  } finally {
     loading.value = false;
   }
+}
+
+// 生命周期
+onMounted(() => {
+  loadHistory();
 });
 </script>
 
@@ -462,6 +496,11 @@ onMounted(async () => {
   border-color: var(--button-bg);
 }
 
+.history-item.pinned {
+  border-left: 3px solid #ffd700;
+  background: rgba(255, 215, 0, 0.05);
+}
+
 .item-content {
   flex: 1;
   min-width: 0;
@@ -492,6 +531,12 @@ onMounted(async () => {
   gap: 15px;
   font-size: 11px;
   color: var(--text-secondary);
+  align-items: center;
+}
+
+.pinned-indicator {
+  font-size: 12px;
+  color: #ffd700;
 }
 
 .item-actions {

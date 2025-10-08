@@ -34,6 +34,15 @@ class TokenResp(BaseModel):
     token_type: str = "bearer"
 
 
+class RegisterResp(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user_id: int
+    username: str
+    email: str
+    role: str
+
+
 class MeResp(BaseModel):
     id: int
     username: str
@@ -48,7 +57,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid token")
 
 
-@router.post("/register", response_model=MeResp)
+@router.post("/register", response_model=RegisterResp)
 async def register(payload: RegisterReq, session: AsyncSession = Depends(get_db_session)):
     dao = UsersDAO(session)
     exist = await dao.get_by_username(payload.username)
@@ -57,7 +66,18 @@ async def register(payload: RegisterReq, session: AsyncSession = Depends(get_db_
     ph = hash_password(payload.password)
     user = await dao.create(username=payload.username, email=payload.email, password_hash=ph)
     await session.commit()
-    return MeResp(id=user.id, username=user.username, email=user.email, role=user.role)
+
+    # 注册成功后自动生成token
+    token = create_access_token(sub=str(user.id), role=user.role)
+
+    return RegisterResp(
+        access_token=token,
+        token_type="bearer",
+        user_id=user.id,
+        username=user.username,
+        email=user.email,
+        role=user.role
+    )
 
 
 @router.post("/login", response_model=TokenResp)

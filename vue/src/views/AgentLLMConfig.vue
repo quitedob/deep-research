@@ -193,7 +193,7 @@ export default {
     
     async loadSearchProvider() {
       try {
-        const response = await axios.get('/api/search/providers');
+        const response = await axios.get('/api/llm-provider/current');
         this.currentSearchProvider = response.data.current_provider;
         this.searchProviderStatus = true;
       } catch (error) {
@@ -203,8 +203,8 @@ export default {
     
     async updateSearchProvider() {
       try {
-        await axios.post('/api/search/providers/set', {
-          provider: this.currentSearchProvider
+        await axios.post('/api/llm-provider/set-default', {
+          provider_id: this.currentSearchProvider
         });
         this.showNotification(`搜索提供商已切换到: ${this.currentSearchProvider}`, 'success');
       } catch (error) {

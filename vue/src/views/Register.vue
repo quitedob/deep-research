@@ -124,16 +124,47 @@ const doRegister = async () => {
   Object.keys(touched).forEach(key => touched[key] = true);
 
   if (usernameError.value || passwordError.value || phoneError.value || emailError.value) return;
-  
+
   try {
     submitting.value = true;
-    const data = await registerUser(username.value, password.value, phone.value || undefined, email.value || undefined);
+    console.log('[Register] 开始注册流程', {
+      username: username.value,
+      email: email.value,
+      phone: phone.value,
+      rememberMe: rememberMe.value
+    });
+
+    const userData = {
+      username: username.value,
+      password: password.value,
+      email: email.value || null,
+      phone: phone.value || null
+    };
+
+    const data = await registerUser(userData);
+    console.log('[Register] 注册响应', {
+      token: data.access_token?.substring(0, 20) + '...',
+      username: data.username,
+      userId: data.user_id,
+      role: data.role
+    });
+
     const storage = rememberMe.value ? localStorage : sessionStorage;
-    storage.setItem('auth_token', data.token);
+    storage.setItem('auth_token', data.access_token);
     storage.setItem('auth_username', data.username);
+    storage.setItem('user', JSON.stringify({
+      id: data.user_id,
+      username: data.username,
+      email: data.email,
+      role: data.role
+    }));
+    console.log('[Register] 用户信息已保存到', rememberMe.value ? 'localStorage' : 'sessionStorage');
+
     const redirect = router.currentRoute.value.query?.redirect || '/';
+    console.log('[Register] 重定向到', redirect);
     router.push(String(redirect));
   } catch (e) {
+    console.error('[Register] 注册失败', e);
     alert(handleAPIError(e));
   } finally {
     submitting.value = false;
@@ -142,7 +173,11 @@ const doRegister = async () => {
 
 onMounted(() => {
   const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
-  if (token) router.replace('/');
+  console.log('[Register] 页面加载检查token', { hasToken: !!token, source: localStorage.getItem('auth_token') ? 'localStorage' : 'sessionStorage' });
+  if (token) {
+    console.log('[Register] 发现已存在token，重定向到首页');
+    router.replace('/');
+  }
 });
 </script>
 

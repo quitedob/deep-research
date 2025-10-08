@@ -2,14 +2,14 @@
   <div class="model-selector-wrapper" ref="selectorRef">
     <button class="current-model-btn" @click="toggleDropdown">
       <span class="model-display">
-        {{ chatStore.currentModel || '选择本地模型' }}
+        {{ getCurrentModelDisplay() }}
       </span>
       <span class="dropdown-icon" :class="{ 'is-open': isDropdownOpen }">▼</span>
     </button>
 
     <div v-if="isDropdownOpen" class="model-dropdown">
       <div class="dropdown-header">
-        <div class="dropdown-title">选择本地 Ollama 模型</div>
+        <div class="dropdown-title">选择AI模型</div>
         <button class="refresh-btn" @click="refreshModels" :disabled="isLoading">
           <span class="refresh-icon" :class="{ 'spinning': isLoading }">🔄</span>
         </button>
@@ -24,22 +24,63 @@
         <button @click="refreshModels" class="retry-btn">重试</button>
       </div>
 
-      <ul v-else-if="ollamaModels.length > 0">
-        <li
-            v-for="modelName in ollamaModels"
-            :key="modelName"
-            class="model-option"
-            @click="selectModel(modelName)"
-        >
-          <div class="model-info">
-            <div class="model-name">{{ modelName }}</div>
-          </div>
-          <span v-if="chatStore.currentModel === modelName" class="checkmark">✔</span>
-        </li>
-      </ul>
+      <div v-else>
+        <!-- Ollama 模型 -->
+        <div v-if="ollamaModels.length > 0" class="provider-section">
+          <div class="provider-title">🦙 Ollama (本地)</div>
+          <ul class="model-list">
+            <li
+                v-for="modelName in ollamaModels"
+                :key="`ollama-${modelName}`"
+                class="model-option"
+                @click="selectModel(modelName)"
+            >
+              <div class="model-info">
+                <div class="model-name">{{ modelName }}</div>
+                <div class="model-provider">Ollama</div>
+              </div>
+              <span v-if="chatStore.currentModel === modelName" class="checkmark">✔</span>
+            </li>
+          </ul>
+        </div>
 
-      <div v-else class="empty-state">
-        <span>未找到本地Ollama模型</span>
+        <!-- DeepSeek 模型 -->
+        <div class="provider-section">
+          <div class="provider-title">🧠 DeepSeek</div>
+          <ul class="model-list">
+            <li
+                v-for="model in deepseekModels"
+                :key="`deepseek-${model.id}`"
+                class="model-option"
+                @click="selectModel(model.id)"
+            >
+              <div class="model-info">
+                <div class="model-name">{{ model.name }}</div>
+                <div class="model-description">{{ model.description }}</div>
+              </div>
+              <span v-if="chatStore.currentModel === model.id" class="checkmark">✔</span>
+            </li>
+          </ul>
+        </div>
+
+        <!-- Doubao 模型 -->
+        <div class="provider-section">
+          <div class="provider-title">🚀 Doubao (豆包)</div>
+          <ul class="model-list">
+            <li
+                v-for="model in doubaoModels"
+                :key="`doubao-${model.id}`"
+                class="model-option"
+                @click="selectModel(model.id)"
+            >
+              <div class="model-info">
+                <div class="model-name">{{ model.name }}</div>
+                <div class="model-description">{{ model.description }}</div>
+              </div>
+              <span v-if="chatStore.currentModel === model.id" class="checkmark">✔</span>
+            </li>
+          </ul>
+        </div>
       </div>
     </div>
   </div>
@@ -58,8 +99,54 @@ const isLoading = ref(false);
 const error = ref(null);
 const selectorRef = ref(null);
 
-// 简化注释：存储从Ollama获取的模型列表
+// 存储不同提供商的模型列表
 const ollamaModels = ref([]);
+const deepseekModels = ref([
+  {
+    id: 'deepseek-chat',
+    name: 'DeepSeek Chat',
+    description: '通用对话模型'
+  },
+  {
+    id: 'deepseek-reasoner',
+    name: 'DeepSeek Reasoner',
+    description: '深度推理模型'
+  }
+]);
+const doubaoModels = ref([
+  {
+    id: 'doubao-seed-1-6-flash-250615',
+    name: 'Doubao Seed 1.6 Flash',
+    description: '快速响应，支持联网搜索'
+  },
+  {
+    id: 'doubao-1-5-vision-pro-250328',
+    name: 'Doubao Vision Pro',
+    description: '视觉理解模型'
+  }
+]);
+
+/**
+ * 获取当前模型的显示名称
+ */
+const getCurrentModelDisplay = () => {
+  const currentModel = chatStore.currentModel;
+  if (!currentModel) return '选择AI模型';
+
+  // 查找Ollama模型
+  const ollamaModel = ollamaModels.value.find(m => m === currentModel);
+  if (ollamaModel) return `Ollama: ${ollamaModel}`;
+
+  // 查找DeepSeek模型
+  const deepseekModel = deepseekModels.value.find(m => m.id === currentModel);
+  if (deepseekModel) return `DeepSeek: ${deepseekModel.name}`;
+
+  // 查找Doubao模型
+  const doubaoModel = doubaoModels.value.find(m => m.id === currentModel);
+  if (doubaoModel) return `Doubao: ${doubaoModel.name}`;
+
+  return currentModel;
+};
 
 /**
  * 异步方法，用于获取并更新Ollama模型列表
@@ -189,6 +276,54 @@ onUnmounted(() => {
   font-size: 14px;
   color: var(--text-secondary);
   font-weight: 500;
+}
+
+.provider-section {
+  margin-bottom: 16px;
+}
+
+.provider-section:last-child {
+  margin-bottom: 0;
+}
+
+.provider-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 8px 12px 4px;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 4px;
+}
+
+.model-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.model-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.model-name {
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.model-provider {
+  font-size: 11px;
+  color: var(--text-secondary);
+  opacity: 0.7;
+}
+
+.model-description {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.3;
 }
 .refresh-btn {
   background: none;

@@ -29,8 +29,49 @@
         </div>
 
         <!-- Standard Content Display -->
-        <div v-else class="message-text" v-html="formattedContent"></div>
+        <div v-else class="message-text" v-html="formattedContent" @click="handleCitationClick"></div>
       </div>
+
+      <!-- Citation Panel (Gemini-style) -->
+      <div v-if="showCitationPanel && selectedCitation" class="citation-panel" @click.stop>
+        <div class="citation-header">
+          <div class="citation-source">
+            <span class="source-icon" :class="selectedCitation.source_type">{{ getSourceIcon(selectedCitation.source_type) }}</span>
+            <span class="source-title">{{ selectedCitation.source_title || '来源详情' }}</span>
+          </div>
+          <button @click="hideCitation" class="close-citation">×</button>
+        </div>
+        <div class="citation-content">
+          <div class="citation-snippet" v-if="selectedCitation.snippet">
+            {{ selectedCitation.snippet }}
+          </div>
+          <div class="citation-scores" v-if="selectedCitation.relevance_score">
+            <span class="score">相关性: {{ (selectedCitation.relevance_score * 100).toFixed(0) }}%</span>
+            <span class="score">置信度: {{ (selectedCitation.confidence_score * 100).toFixed(0) }}%</span>
+          </div>
+          <div class="citation-actions">
+            <a v-if="selectedCitation.source_url" :href="selectedCitation.source_url" target="_blank" rel="noopener noreferrer" class="source-link">
+              查看原始来源
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Evidence Chain for Assistant Messages (folded by default) -->
+      <div v-if="message.role === 'assistant' && conversationId" class="evidence-section">
+        <button @click="toggleEvidenceExpanded" class="evidence-toggle">
+          <span class="toggle-icon">{{ evidenceExpanded ? '▼' : '▶' }}</span>
+          <span>来源证据 ({{ evidenceCount }})</span>
+        </button>
+        <div v-if="evidenceExpanded" class="evidence-content">
+          <EvidenceChain
+            :conversation-id="conversationId"
+            :research-session-id="null"
+            @evidence-updated="$emit('evidence-updated', $event)"
+          />
+        </div>
+      </div>
+
       <div class="message-actions" v-if="!isThinking">
         <!-- Timer Display -->
         <div v-if="message.role === 'assistant' && message.duration" class="timer-display">
@@ -60,13 +101,27 @@
 import { computed, ref, nextTick } from 'vue';
 import markdownit from 'markdown-it';
 import hljs from 'highlight.js';
+import EvidenceChain from '@/components/EvidenceChain.vue';
 
-const props = defineProps({ message: { type: Object, required: true } });
-const emit = defineEmits(['edit-and-send', 'regenerate']);
+const props = defineProps({
+  message: { type: Object, required: true },
+  conversationId: { type: String, default: null }
+});
+
+const emit = defineEmits(['edit-and-send', 'regenerate', 'evidence-updated', 'show-citation']);
 
 const isEditing = ref(false);
 const editedContent = ref('');
 const textareaRef = ref(null);
+
+// 引用相关状态
+const showCitationPanel = ref(false);
+const selectedCitation = ref(null);
+const citations = ref([]);
+
+// 证据展开状态
+const evidenceExpanded = ref(false);
+const evidenceCount = ref(0);
 
 const isThinking = computed(() => props.message.content === null);
 
@@ -100,7 +155,11 @@ const md = markdownit({
   }
 });
 
-const formattedContent = computed(() => md.render(props.message.content || ''));
+const formattedContent = computed(() => {
+  const content = props.message.content || '';
+  const contentWithCitations = formatContentWithCitations(content);
+  return md.render(contentWithCitations);
+});
 
 const copyContent = async () => {
   try {
@@ -108,6 +167,34 @@ const copyContent = async () => {
   } catch (err) {
     console.error('Failed to copy: ', err);
   }
+};
+
+// 引用相关方法
+const showCitation = (citationId) => {
+  selectedCitation.value = citations.value.find(c => c.id === citationId);
+  showCitationPanel.value = true;
+};
+
+const hideCitation = () => {
+  showCitationPanel.value = false;
+  selectedCitation.value = null;
+};
+
+const formatContentWithCitations = (content) => {
+  if (!content || !citations.value.length) return content;
+
+  // 在文本中查找引用标记 [1], [2] 等，并替换为可点击的引用
+  let formattedContent = content;
+  citations.value.forEach((citation, index) => {
+    const citationNumber = index + 1;
+    const citationMark = `[${citationNumber}]`;
+    formattedContent = formattedContent.replace(
+      new RegExp(`\\[${citationNumber}\\]`, 'g'),
+      `<sup class="citation-mark" data-citation="${citation.id}">[${citationNumber}]</sup>`
+    );
+  });
+
+  return formattedContent;
 };
 </script>
 
@@ -161,6 +248,15 @@ const copyContent = async () => {
 
 /* --- Thinking Indicator Styles --- */
 .message-bubble.thinking { background-color: #1e3a8a; color: #e0e7ff; border: 1px solid #1d4ed8; }
+
+/* --- Evidence Section Styles --- */
+.evidence-section {
+  margin-top: 12px;
+  padding: 8px;
+  background: rgba(59, 130, 246, 0.05);
+  border-radius: 8px;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+}
 .typing-indicator { display: flex; align-items: center; gap: 8px; }
 .typing-dots { display: flex; gap: 4px; align-items: center; }
 .typing-dot { width: 8px; height: 8px; background: #93c5fd; border-radius: 50%; animation: typing 1.4s infinite ease-in-out both; }

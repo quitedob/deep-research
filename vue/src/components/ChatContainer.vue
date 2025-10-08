@@ -27,8 +27,10 @@
           <MessageItem
               v-if="!msg.type"
               :message="msg"
+              :conversation-id="chatStore.activeSessionId"
               @edit-and-send="emit('edit-and-send', $event)"
               @regenerate="emit('regenerate', $event)"
+              @evidence-updated="emit('evidence-updated', $event)"
           />
           <ResearchActivities v-if="msg.type === 'activities'" :activities="msg.payload" />
           <ResearchReport v-if="msg.type === 'report'" :report="msg.payload" />
@@ -57,6 +59,7 @@ const emit = defineEmits([
     'send-message-from-container',
     'edit-and-send',
     'regenerate',
+    'evidence-updated',
     'open-ppt-generator'
 ]);
 

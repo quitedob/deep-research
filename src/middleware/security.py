@@ -6,6 +6,7 @@
 import re
 import time
 import hashlib
+import secrets
 from typing import Dict, List, Optional, Set
 from collections import defaultdict
 from fastapi import HTTPException, Request, status
@@ -23,6 +24,8 @@ class SecurityMiddleware:
         # 速率限制存储
         self.rate_limits: Dict[str, List[float]] = defaultdict(list)
         self.blocked_ips: Set[str] = set()
+        # CSRF Token存储
+        self.csrf_tokens: Dict[str, float] = {}
 
         # 安全配置
         self.max_requests_per_minute = 60  # 每分钟最大请求数
@@ -118,6 +121,24 @@ class SecurityMiddleware:
         if request.method in ["POST", "PUT", "PATCH"]:
             try:
                 body = await request.body()
+
+                # CSRF保护（对API请求）
+                if request.url.path.startswith("/api/"):
+                    csrf_token = request.headers.get("X-CSRF-Token")
+                    if not csrf_token or csrf_token not in self.csrf_tokens:
+                        logger.warning(f"CSRF token验证失败: {request.url.path}")
+                        raise HTTPException(
+                            status_code=status.HTTP_403_FORBIDDEN,
+                            detail="CSRF token验证失败"
+                        )
+
+                    # 检查token是否过期（1小时）
+                    if time.time() - self.csrf_tokens[csrf_token] > 3600:
+                        del self.csrf_tokens[csrf_token]
+                        raise HTTPException(
+                            status_code=status.HTTP_403_FORBIDDEN,
+                            detail="CSRF token已过期"
+                        )
 
                 # 检查可疑模式
                 body_str = body.decode('utf-8', errors='ignore')
@@ -258,6 +279,12 @@ async def security_middleware_func(request: Request, call_next):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+
+        # 为GET请求生成CSRF token
+        if request.method == "GET" and request.url.path.startswith("/api/"):
+            csrf_token = secrets.token_urlsafe(32)
+            self.csrf_tokens[csrf_token] = time.time()
+            response.headers["X-CSRF-Token"] = csrf_token
 
         return response
 

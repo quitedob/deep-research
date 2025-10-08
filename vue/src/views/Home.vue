@@ -18,9 +18,10 @@
           </svg>
           <span>中止</span>
         </button>
-        <InputBox 
-          @send-message="handleSendMessage" 
-          @send-research="handleSendResearch" 
+        <InputBox
+          @send-message="handleSendMessage"
+          @send-research="handleSendResearch"
+          @send-web-search="handleSendWebSearch"
         />
       </div>
     </main>
@@ -38,6 +39,56 @@ defineProps({ currentTheme: String });
 defineEmits(['toggle-theme']);
 
 const chatStore = useChatStore();
+
+/**
+ * 处理联网搜索请求
+ */
+const handleSendWebSearch = async (text) => {
+  if (!text.trim()) return;
+
+  // 1) 添加用户消息
+  chatStore.addMessage({
+    role: 'user',
+    content: text,
+    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  });
+
+  // 2) 添加助手占位
+  const assistantMessageId = chatStore.addMessage({
+    role: 'assistant',
+    content: '正在联网搜索最新信息...',
+    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  });
+
+  chatStore.setTypingStatus(true);
+
+  try {
+    // 3) 使用当前选择的模型进行联网搜索
+    const currentModel = chatStore.currentModel;
+
+    // 构造联网搜索请求
+    const searchMessage = {
+      message: text,
+      model: currentModel,
+      session_id: chatStore.activeSessionId,
+      web_search: true  // 启用联网搜索
+    };
+
+    const response = await simpleChat(searchMessage);
+
+    // 4) 更新助手消息
+    chatStore.updateMessageContent({ messageId: assistantMessageId, contentChunk: response });
+
+    chatStore.setTypingStatus(false);
+    if (!chatStore.activeSessionId) {
+      chatStore.fetchHistoryList();
+    }
+  } catch (error) {
+    const msg = handleAPIError(error);
+    chatStore.updateMessageContent({ messageId: assistantMessageId, contentChunk: `\n\n[错误] ${msg}` });
+    chatStore.setTypingStatus(false);
+  }
+};
 
 /**
  * 处理深度研究请求 - 使用完整的研究流程

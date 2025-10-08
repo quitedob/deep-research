@@ -10,8 +10,9 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..api.deps import require_auth, require_admin
+from ..api.errors import create_error_response, ErrorCodes, handle_database_error, handle_not_found_error, APIException
 from ..sqlmodel.models import User
-from ..database import get_async_session
+from ..core.db import get_async_session
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/agent-llm-config", tags=["agent-llm-config"])
@@ -109,7 +110,7 @@ async def get_all_agent_configs(
     
     except Exception as e:
         logger.error(f"获取智能体配置失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return handle_database_error(e)
 
 
 @router.get("/configs/{agent_id}")
@@ -120,7 +121,7 @@ async def get_agent_config(
     """获取指定智能体的 LLM 配置"""
     try:
         if agent_id not in _agent_llm_configs:
-            raise HTTPException(status_code=404, detail=f"智能体 {agent_id} 不存在")
+            return handle_not_found_error(f"智能体 {agent_id}")
         
         config = _agent_llm_configs[agent_id]
         return {
@@ -133,7 +134,7 @@ async def get_agent_config(
         raise
     except Exception as e:
         logger.error(f"获取智能体配置失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return handle_database_error(e)
 
 
 @router.put("/configs/{agent_id}")
@@ -145,7 +146,7 @@ async def update_agent_config(
     """更新指定智能体的 LLM 配置"""
     try:
         if agent_id not in _agent_llm_configs:
-            raise HTTPException(status_code=404, detail=f"智能体 {agent_id} 不存在")
+            return handle_not_found_error(f"智能体 {agent_id}")
         
         # 更新配置
         _agent_llm_configs[agent_id]["llm_provider"] = request.llm_provider
@@ -165,7 +166,7 @@ async def update_agent_config(
         raise
     except Exception as e:
         logger.error(f"更新智能体配置失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return handle_database_error(e)
 
 
 @router.post("/configs/batch-update")
@@ -208,7 +209,7 @@ async def batch_update_configs(
     
     except Exception as e:
         logger.error(f"批量更新智能体配置失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return handle_database_error(e)
 
 
 @router.get("/available-providers")
@@ -296,7 +297,7 @@ async def get_available_providers(
     
     except Exception as e:
         logger.error(f"获取可用提供商失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return handle_database_error(e)
 
 
 @router.post("/reset-defaults")
@@ -321,7 +322,7 @@ async def reset_to_defaults(
     
     except Exception as e:
         logger.error(f"重置配置失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return handle_database_error(e)
 
 
 def get_agent_llm_config(agent_id: str) -> Dict[str, Any]:

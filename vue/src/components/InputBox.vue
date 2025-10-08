@@ -47,10 +47,23 @@
       <button class="attach-btn" title="视频">
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect><line x1="7" y1="2" x2="7" y2="22"></line><line x1="17" y1="2" x2="17" y2="22"></line><line x1="2" y1="12" x2="22" y2="12"></line><line x1="2" y1="7" x2="7" y2="7"></line><line x1="2" y1="17" x2="7" y2="17"></line><line x1="17" y1="17" x2="22" y2="17"></line><line x1="17" y1="7" x2="22" y2="7"></line></svg>
       </button>
-      <button 
-        class="attach-btn research-btn" 
+      <button
+        class="attach-btn web-search-btn"
+        :class="{ 'active': isWebSearchMode }"
+        @click="toggleWebSearchMode"
+        :title="isWebSearchMode ? '联网搜索模式（当前激活）' : '开启联网搜索模式'">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"></circle>
+          <path d="m21 21-4.35-4.35"></path>
+          <line x1="19" y1="5" x2="13.5" y2="5"></line>
+          <line x1="13.5" y1="5" x2="13.5" y2="1"></line>
+          <line x1="13.5" y1="1" x2="17" y2="1"></line>
+        </svg>
+      </button>
+      <button
+        class="attach-btn research-btn"
         :class="{ 'active': isDeepResearchMode }"
-        @click="toggleResearchMode" 
+        @click="toggleResearchMode"
         :title="isDeepResearchMode ? '深度研究模式（当前激活）' : '开启深度研究模式'">
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="11" cy="11" r="8"></circle>
@@ -58,6 +71,64 @@
           <circle cx="11" cy="11" r="3"></circle>
         </svg>
       </button>
+
+      <!-- 任务进度面板 -->
+      <div v-if="showTaskProgress" class="task-progress-panel">
+        <div class="progress-header">
+          <div class="progress-info">
+            <h4>深度研究任务进度</h4>
+            <span class="task-status">{{ taskProgress.status }}</span>
+          </div>
+          <button @click="showTaskProgress = false" class="close-progress">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+
+        <div class="progress-bar-container">
+          <div class="progress-bar">
+            <div class="progress-fill" :style="{ width: taskProgress.progress + '%' }"></div>
+          </div>
+          <span class="progress-text">{{ taskProgress.progress }}%</span>
+        </div>
+
+        <div class="task-steps">
+          <div
+            v-for="(step, index) in taskProgress.steps"
+            :key="index"
+            :class="['task-step', step.status]"
+          >
+            <div class="step-icon">
+              <span v-if="step.status === 'completed'">✅</span>
+              <span v-else-if="step.status === 'running'">⏳</span>
+              <span v-else-if="step.status === 'error'">❌</span>
+              <span v-else>⏸️</span>
+            </div>
+            <div class="step-content">
+              <div class="step-title">{{ step.title }}</div>
+              <div class="step-detail">{{ step.detail }}</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="progress-actions">
+          <button @click="pauseTask" v-if="taskProgress.status === 'running'" class="btn-pause">
+            暂停
+          </button>
+          <button @click="resumeTask" v-if="taskProgress.status === 'paused'" class="btn-resume">
+            继续
+          </button>
+          <button @click="cancelTask" class="btn-cancel">
+            取消
+          </button>
+        </div>
+
+        <div class="estimated-time" v-if="taskProgress.estimatedTime">
+          预计完成时间: {{ taskProgress.estimatedTime }}
+        </div>
+      </div>
       <button class="attach-btn" title="画布">
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
       </button>
@@ -98,11 +169,42 @@ import FileUpload from './FileUpload.vue';
 
 const inputText = ref('');
 const textareaRef = ref(null);
-const emit = defineEmits(['send-message', 'send-research', 'research-complete', 'research-error']);
+const emit = defineEmits(['send-message', 'send-research', 'send-web-search', 'research-complete', 'research-error']);
 const isDeepResearchMode = ref(false);
+const isWebSearchMode = ref(false);
+const showTaskProgress = ref(false);
 const placeholderText = ref('输入您的问题或指令 (Enter 发送, Shift + Enter 换行)...');
 const isAttachmentMenuOpen = ref(false);
 const plusMenuContainerRef = ref(null);
+
+// 任务进度状态
+const taskProgress = ref({
+  status: 'running',
+  progress: 35,
+  estimatedTime: '约2分钟',
+  steps: [
+    {
+      title: '分析研究主题',
+      detail: '正在理解您的研究需求...',
+      status: 'completed'
+    },
+    {
+      title: '收集相关信息',
+      detail: '从多个来源获取数据...',
+      status: 'running'
+    },
+    {
+      title: '整理和分析',
+      detail: '正在处理收集到的信息',
+      status: 'pending'
+    },
+    {
+      title: '生成报告',
+      detail: '撰写研究报告',
+      status: 'pending'
+    }
+  ]
+});
 
 // (新增) 允许父组件调用此方法来设置输入框文本
 const setInputText = (text) => {
@@ -122,6 +224,8 @@ const sendMessage = () => {
   // 根据当前模式发送不同类型的事件
   if (isDeepResearchMode.value) {
     emit('send-research', text);
+  } else if (isWebSearchMode.value) {
+    emit('send-web-search', text);
   } else {
     emit('send-message', text);
   }
@@ -136,8 +240,47 @@ const sendMessage = () => {
 };
 
 // 切换深度研究模式
+const toggleWebSearchMode = () => {
+  isWebSearchMode.value = !isWebSearchMode.value;
+  // 关闭其他模式
+  if (isWebSearchMode.value) {
+    isDeepResearchMode.value = false;
+  }
+  // 更新提示文本
+  if (isWebSearchMode.value) {
+    placeholderText.value = '输入您的问题，AI将联网搜索最新信息 (Enter 发送, Shift + Enter 换行)...';
+  } else {
+    placeholderText.value = '输入您的问题或指令 (Enter 发送, Shift + Enter 换行)...';
+  }
+};
+
+// 任务控制方法
+const pauseTask = () => {
+  taskProgress.value.status = 'paused';
+  // 这里应该调用API暂停任务
+};
+
+const resumeTask = () => {
+  taskProgress.value.status = 'running';
+  // 这里应该调用API恢复任务
+};
+
+const cancelTask = () => {
+  showTaskProgress.value = false;
+  taskProgress.value.status = 'cancelled';
+  // 这里应该调用API取消任务
+  emit('research-error', '任务已取消');
+};
+
 const toggleResearchMode = () => {
   isDeepResearchMode.value = !isDeepResearchMode.value;
+  // 关闭其他模式
+  if (isDeepResearchMode.value) {
+    isWebSearchMode.value = false;
+    showTaskProgress.value = true; // 开启深度研究时显示进度面板
+  } else {
+    showTaskProgress.value = false;
+  }
   // 更新提示文本
   if (isDeepResearchMode.value) {
     placeholderText.value = '输入研究主题，进行深度分析 (Enter 发送, Shift + Enter 换行)...';
@@ -355,6 +498,205 @@ onUnmounted(() => {
   border-radius: 50%;
   z-index: -1;
   animation: pulse 2s infinite;
+}
+
+.web-search-btn {
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+.web-search-btn.active {
+  background-color: #28a745;
+  color: white;
+  box-shadow: 0 0 10px rgba(40, 167, 69, 0.3);
+}
+
+.web-search-btn.active::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
+  background: linear-gradient(45deg, #28a745, #20c997);
+  border-radius: 50%;
+  z-index: -1;
+  animation: pulse 2s infinite;
+}
+
+/* 任务进度面板样式 */
+.task-progress-panel {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  width: 350px;
+  background: var(--primary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  z-index: 1000;
+  animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.progress-info h4 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.task-status {
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 12px;
+  background: var(--accent-color);
+  color: white;
+}
+
+.close-progress {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+}
+
+.close-progress:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+.progress-bar-container {
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.progress-bar {
+  flex: 1;
+  height: 8px;
+  background: var(--border-color);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-color), #4ade80);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.progress-text {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  min-width: 40px;
+  text-align: right;
+}
+
+.task-steps {
+  padding: 0 20px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.task-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.task-step:last-child {
+  border-bottom: none;
+}
+
+.step-icon {
+  font-size: 16px;
+  margin-top: 2px;
+}
+
+.step-content {
+  flex: 1;
+}
+
+.step-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.step-detail {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.progress-actions {
+  padding: 16px 20px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  gap: 8px;
+}
+
+.btn-pause, .btn-resume, .btn-cancel {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-pause {
+  background: #f59e0b;
+  color: white;
+}
+
+.btn-resume {
+  background: #10b981;
+  color: white;
+}
+
+.btn-cancel {
+  background: #ef4444;
+  color: white;
+}
+
+.btn-pause:hover, .btn-resume:hover, .btn-cancel:hover {
+  opacity: 0.9;
+}
+
+.estimated-time {
+  padding: 12px 20px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-secondary);
+  border-top: 1px solid var(--border-color);
 }
 
 @keyframes pulse {

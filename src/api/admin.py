@@ -13,6 +13,7 @@ from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..api.deps import require_auth
+from ..api.errors import create_error_response, ErrorCodes, handle_database_error, handle_not_found_error, APIException
 from ..sqlmodel.models import User
 from ..core.db import get_async_session
 
@@ -95,9 +96,10 @@ class APIUsageResponse(BaseModel):
 async def require_admin(current_user: User = Depends(require_auth)) -> User:
     """要求管理员权限"""
     if current_user.role != "admin":
-        raise HTTPException(
-            status_code=403,
-            detail="需要管理员权限"
+        raise APIException(
+            code=ErrorCodes.FORBIDDEN,
+            message="需要管理员权限",
+            status_code=403
         )
     return current_user
 
@@ -146,7 +148,7 @@ async def list_all_users(
     
     except Exception as e:
         logger.error(f"获取用户列表失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return handle_database_error(e)
 
 
 @router.get("/users/{user_id}", response_model=UserDetailResponse)
@@ -163,7 +165,7 @@ async def get_user_detail(
         user = result.scalar_one_or_none()
         
         if not user:
-            raise HTTPException(status_code=404, detail="用户不存在")
+            return handle_not_found_error("用户", user_id)
         
         return UserDetailResponse.from_orm(user)
     
@@ -171,7 +173,7 @@ async def get_user_detail(
         raise
     except Exception as e:
         logger.error(f"获取用户详情失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return handle_database_error(e)
 
 
 @router.patch("/users/{user_id}")
@@ -195,11 +197,15 @@ async def update_user(
         user = result.scalar_one_or_none()
         
         if not user:
-            raise HTTPException(status_code=404, detail="用户不存在")
+            return handle_not_found_error("用户", user_id)
         
         # 防止管理员封禁自己
         if user.id == current_admin.id and update_data.is_active is False:
-            raise HTTPException(status_code=400, detail="不能封禁自己")
+            raise APIException(
+                code=ErrorCodes.BUSINESS_LOGIC_ERROR,
+                message="不能封禁自己",
+                status_code=400
+            )
         
         # 更新字段
         if update_data.is_active is not None:
@@ -207,7 +213,11 @@ async def update_user(
         
         if update_data.role is not None:
             if update_data.role not in ["free", "subscribed", "admin"]:
-                raise HTTPException(status_code=400, detail="无效的角色")
+                raise APIException(
+                    code=ErrorCodes.VALIDATION_ERROR,
+                    message="无效的角色",
+                    status_code=400
+                )
             user.role = update_data.role
         
         await session.commit()
@@ -224,7 +234,7 @@ async def update_user(
     except Exception as e:
         logger.error(f"更新用户失败: {e}")
         await session.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        return handle_database_error(e)
 
 
 @router.post("/users/{user_id}/toggle-active")
@@ -241,11 +251,15 @@ async def toggle_user_active(
         user = result.scalar_one_or_none()
         
         if not user:
-            raise HTTPException(status_code=404, detail="用户不存在")
+            return handle_not_found_error("用户", user_id)
         
         # 防止管理员封禁自己
         if user.id == current_admin.id:
-            raise HTTPException(status_code=400, detail="不能封禁自己")
+            raise APIException(
+                code=ErrorCodes.BUSINESS_LOGIC_ERROR,
+                message="不能封禁自己",
+                status_code=400
+            )
         
         # 切换状态
         user.is_active = not user.is_active
@@ -265,7 +279,7 @@ async def toggle_user_active(
     except Exception as e:
         logger.error(f"切换用户状态失败: {e}")
         await session.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        return handle_database_error(e)
 
 
 # ==================== 统计端点 ====================
@@ -315,7 +329,7 @@ async def get_user_stats(
     
     except Exception as e:
         logger.error(f"获取用户统计失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return handle_database_error(e)
 
 
 # ==================== 对话记录端点 ====================
@@ -337,7 +351,7 @@ async def get_user_conversations(
         user = user_result.scalar_one_or_none()
         
         if not user:
-            raise HTTPException(status_code=404, detail="用户不存在")
+            return handle_not_found_error("用户", user_id)
         
         # 导入对话模型
         from ..sqlmodel.models import ConversationSession, ConversationMessage
@@ -380,7 +394,7 @@ async def get_user_conversations(
         raise
     except Exception as e:
         logger.error(f"获取用户对话记录失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return handle_database_error(e)
 
 
 # ==================== API 使用记录端点 ====================
@@ -402,7 +416,7 @@ async def get_user_api_usage(
         user = user_result.scalar_one_or_none()
         
         if not user:
-            raise HTTPException(status_code=404, detail="用户不存在")
+            return handle_not_found_error("用户", user_id)
         
         # 导入 API 使用日志模型
         from ..sqlmodel.models import APIUsageLog
@@ -421,7 +435,7 @@ async def get_user_api_usage(
         raise
     except Exception as e:
         logger.error(f"获取 API 使用记录失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return handle_database_error(e)
 
 
 # ==================== 文档处理任务端点 ====================
@@ -443,7 +457,7 @@ async def get_user_documents(
         user = user_result.scalar_one_or_none()
         
         if not user:
-            raise HTTPException(status_code=404, detail="用户不存在")
+            return handle_not_found_error("用户", user_id)
         
         # 导入文档处理任务模型
         from ..sqlmodel.models import DocumentProcessingJob
@@ -477,7 +491,7 @@ async def get_user_documents(
         raise
     except Exception as e:
         logger.error(f"获取文档处理任务失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return handle_database_error(e)
 
 
 # ==================== 研究报告端点 ====================
@@ -528,7 +542,7 @@ async def get_all_research_reports(
     
     except Exception as e:
         logger.error(f"获取研究报告失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return handle_database_error(e)
 
 
 @router.get("/research-reports/{document_id}")
@@ -550,7 +564,7 @@ async def get_research_report_detail(
         chunks = result.scalars().all()
         
         if not chunks:
-            raise HTTPException(status_code=404, detail="研究报告不存在")
+            return handle_not_found_error("研究报告", document_id)
         
         # 合并所有块的内容
         full_content = "\n\n".join([chunk.content for chunk in chunks])
@@ -575,7 +589,7 @@ async def get_research_report_detail(
         raise
     except Exception as e:
         logger.error(f"获取研究报告详情失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return handle_database_error(e)
 
 
 # ==================== 订阅管理端点 ====================
@@ -629,7 +643,7 @@ async def get_all_subscriptions(
     
     except Exception as e:
         logger.error(f"获取订阅记录失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return handle_database_error(e)
 
 
 @router.patch("/subscriptions/{subscription_id}")
@@ -650,12 +664,16 @@ async def update_subscription(
         subscription = result.scalar_one_or_none()
         
         if not subscription:
-            raise HTTPException(status_code=404, detail="订阅不存在")
+            return handle_not_found_error("订阅", subscription_id)
         
         # 验证状态
         valid_statuses = ["active", "canceled", "past_due", "unpaid"]
         if status not in valid_statuses:
-            raise HTTPException(status_code=400, detail=f"无效的状态。有效值: {valid_statuses}")
+            raise APIException(
+                code=ErrorCodes.VALIDATION_ERROR,
+                message=f"无效的状态。有效值: {valid_statuses}",
+                status_code=400
+            )
         
         # 更新状态
         subscription.status = status
@@ -676,7 +694,7 @@ async def update_subscription(
     except Exception as e:
         logger.error(f"更新订阅状态失败: {e}")
         await session.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        return handle_database_error(e)
 
 
 # ==================== 系统健康检查 ====================
@@ -729,4 +747,4 @@ async def system_health_check(
     
     except Exception as e:
         logger.error(f"系统健康检查失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return handle_database_error(e)
