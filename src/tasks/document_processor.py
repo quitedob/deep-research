@@ -65,23 +65,40 @@ class DocumentProcessor:
     def _check_dependencies(self):
         """检查必要的依赖是否可用"""
         missing_deps = []
-        
+
         if not DOCX2TXT_AVAILABLE:
             missing_deps.append("docx2txt")
-        
+
         if not PYPANDOC_AVAILABLE:
             missing_deps.append("pypandoc")
-        
+
         if not REPORTLAB_AVAILABLE:
             missing_deps.append("reportlab")
-        
+
         # 检查 OCRmyPDF 是否可用
         try:
-            subprocess.run(['ocrmypdf', '--version'], 
+            subprocess.run(['ocrmypdf', '--version'],
                          capture_output=True, check=True)
         except (subprocess.CalledProcessError, FileNotFoundError):
             missing_deps.append("ocrmypdf")
-        
+
+        # 检查表格提取相关依赖
+        try:
+            import fitz  # PyMuPDF
+        except ImportError:
+            missing_deps.append("PyMuPDF")
+
+        try:
+            import volcenginesdkarkruntime
+        except ImportError:
+            missing_deps.append("volcenginesdkarkruntime (豆包SDK)")
+
+        # 可选的本地表格提取库
+        try:
+            import camelot
+        except ImportError:
+            print("提示：安装 camelot-py 可以启用本地表格提取功能")
+
         if missing_deps:
             print(f"警告：以下依赖不可用：{', '.join(missing_deps)}")
             print("某些文档处理功能可能无法正常工作")
@@ -236,7 +253,7 @@ class DocumentProcessor:
             raise ValueError(f"处理 .md 文件失败：{str(e)}")
     
     async def _process_pdf(self, file_path: str) -> str:
-        """处理 .pdf 文件（支持文本提取和OCR）"""
+        """处理 .pdf 文件（支持文本提取、OCR和表格检测）"""
         try:
             # 首先尝试直接提取文本
             text_content = await self._extract_text_from_pdf_direct(file_path)
@@ -245,6 +262,14 @@ class DocumentProcessor:
             if len(text_content.strip()) < 100:
                 print(f"直接提取文本过少 ({len(text_content)} 字符)，尝试OCR处理")
                 text_content = await self._extract_text_from_pdf_ocr(file_path)
+
+            # 检测并提取表格数据
+            table_data = await self._extract_tables_from_pdf(file_path)
+            if table_data:
+                # 将表格数据转换为结构化文本格式
+                table_text = self._format_tables_to_text(table_data)
+                text_content = text_content + "\n\n" + table_text if text_content else table_text
+                print(f"成功提取 {len(table_data)} 个表格")
 
             return text_content or ""
 
@@ -353,6 +378,325 @@ class DocumentProcessor:
         except Exception as e:
             print(f"OCR文本提取失败: {str(e)}")
             return ""
+
+    async def _extract_tables_from_pdf(self, file_path: str) -> List[Dict[str, Any]]:
+        """从PDF中检测和提取表格数据"""
+        try:
+            # 尝试使用 doubao 视觉理解模型进行表格检测
+            table_data = await self._extract_tables_with_doubao_vision(file_path)
+
+            if table_data:
+                return table_data
+
+            # 回退到本地表格检测方法
+            return await self._extract_tables_locally(file_path)
+
+        except Exception as e:
+            print(f"表格提取失败: {str(e)}")
+            return []
+
+    async def _extract_tables_with_doubao_vision(self, file_path: str) -> List[Dict[str, Any]]:
+        """使用豆包视觉理解模型检测表格"""
+        try:
+            # 获取豆包API配置
+            from src.config.config_loader import get_settings
+            settings = get_settings()
+
+            doubao_api_key = getattr(settings, 'doubao_api_key', None) or os.getenv('DOUBAO_API_KEY')
+            doubao_base_url = getattr(settings, 'doubao_base_url', None) or 'https://ark.cn-beijing.volces.com/api/v3'
+            doubao_model = getattr(settings, 'doubao_vision_model', None) or 'doubao-1-5-vision-pro-250328'
+
+            if not doubao_api_key:
+                print("豆包API密钥未配置，跳过视觉表格检测")
+                return []
+
+            # 将PDF转换为图片进行表格检测
+            pdf_images = await self._convert_pdf_to_images(file_path)
+            if not pdf_images:
+                print("PDF转图片失败，无法进行视觉表格检测")
+                return []
+
+            all_tables = []
+
+            # 使用豆包视觉模型检测每页的表格
+            from volcenginesdkarkruntime import Ark
+            client = Ark(api_key=doubao_api_key, base_url=doubao_base_url)
+
+            for page_num, image_base64 in enumerate(pdf_images, 1):
+                try:
+                    # 构造表格检测的prompt
+                    table_detection_prompt = """
+                    请分析这张图片中的表格数据，并提取为结构化格式。
+
+                    要求：
+                    1. 识别图片中所有的表格
+                    2. 对每个表格，提取其完整的数据内容
+                    3. 保持表格的行列结构
+                    4. 识别表头和数据行
+                    5. 返回JSON格式的结果
+
+                    返回格式：
+                    {
+                      "tables": [
+                        {
+                          "table_id": 1,
+                          "title": "表格标题（如果有）",
+                          "headers": ["列1", "列2", "列3"],
+                          "rows": [
+                            ["数据1", "数据2", "数据3"],
+                            ["数据4", "数据5", "数据6"]
+                          ],
+                          "position": "在页面中的大致位置描述"
+                        }
+                      ]
+                    }
+
+                    如果没有检测到表格，返回 {"tables": []}
+                    """
+
+                    response = client.chat.completions.create(
+                        model=doubao_model,
+                        messages=[
+                            {
+                                "role": "user",
+                                "content": [
+                                    {
+                                        "type": "image_url",
+                                        "image_url": {
+                                            "url": f"data:image/jpeg;base64,{image_base64}"
+                                        }
+                                    },
+                                    {
+                                        "type": "text",
+                                        "text": table_detection_prompt
+                                    }
+                                ]
+                            }
+                        ],
+                        temperature=0.1,  # 使用较低的温度以确保准确性
+                        max_tokens=4000
+                    )
+
+                    # 解析响应
+                    content = response.choices[0].message.content
+                    table_result = self._parse_table_response(content, page_num)
+
+                    if table_result:
+                        all_tables.extend(table_result)
+                        print(f"第{page_num}页检测到 {len(table_result)} 个表格")
+
+                except Exception as e:
+                    print(f"第{page_num}页表格检测失败: {str(e)}")
+                    continue
+
+            return all_tables
+
+        except ImportError as e:
+            print(f"豆包SDK未安装: {str(e)}")
+            return []
+        except Exception as e:
+            print(f"豆包视觉表格检测失败: {str(e)}")
+            return []
+
+    async def _extract_tables_locally(self, file_path: str) -> List[Dict[str, Any]]:
+        """本地表格检测方法（回退方案）"""
+        try:
+            # 尝试使用 camelot-py 或其他本地表格检测库
+            import camelot
+            import pandas as pd
+
+            tables = []
+
+            # 使用 camelot 提取表格
+            tables_list = camelot.read_pdf(file_path, pages='all')
+
+            for table_idx, table in enumerate(tables_list):
+                try:
+                    # 转换为DataFrame
+                    df = table.df
+
+                    # 构建表格数据结构
+                    table_data = {
+                        "table_id": table_idx + 1,
+                        "title": f"表格{table_idx + 1}",
+                        "headers": df.iloc[0].tolist() if not df.empty else [],
+                        "rows": df.iloc[1:].values.tolist() if len(df) > 1 else [],
+                        "position": f"页面{table.page}",
+                        "accuracy": table.accuracy,
+                        "whitespace": table.whitespace
+                    }
+
+                    tables.append(table_data)
+
+                except Exception as e:
+                    print(f"处理表格{table_idx}时出错: {str(e)}")
+                    continue
+
+            return tables
+
+        except ImportError:
+            print("本地表格检测库未安装，跳过本地表格检测")
+            return []
+        except Exception as e:
+            print(f"本地表格检测失败: {str(e)}")
+            return []
+
+    async def _convert_pdf_to_images(self, file_path: str) -> List[str]:
+        """将PDF页面转换为base64编码的图片"""
+        try:
+            import fitz  # PyMuPDF
+            import base64
+            import io
+
+            images = []
+
+            # 打开PDF文件
+            pdf_document = fitz.open(file_path)
+
+            for page_num in range(len(pdf_document)):
+                # 获取页面
+                page = pdf_document.load_page(page_num)
+
+                # 将页面转换为图片（使用较高的DPI以确保表格清晰）
+                mat = fitz.Matrix(2.0, 2.0)  # 2x zoom
+                pix = page.get_pixmap(matrix=mat)
+
+                # 转换为base64
+                img_data = pix.tobytes("jpeg")
+                img_base64 = base64.b64encode(img_data).decode('utf-8')
+
+                images.append(img_base64)
+
+            pdf_document.close()
+            return images
+
+        except ImportError:
+            print("PyMuPDF未安装，无法转换PDF为图片")
+            return []
+        except Exception as e:
+            print(f"PDF转图片失败: {str(e)}")
+            return []
+
+    def _parse_table_response(self, content: str, page_num: int) -> List[Dict[str, Any]]:
+        """解析豆包模型返回的表格数据"""
+        try:
+            import json
+            import re
+
+            # 尝试提取JSON部分
+            json_match = re.search(r'\{[\s\S]*\}', content)
+            if json_match:
+                json_str = json_match.group()
+                result = json.loads(json_str)
+
+                tables = result.get('tables', [])
+
+                # 为每个表格添加页面信息
+                for table in tables:
+                    table['page'] = page_num
+                    if 'table_id' not in table:
+                        table['table_id'] = 1
+
+                return tables
+
+            # 如果无法解析JSON，尝试简单的文本解析
+            return self._parse_table_from_text(content, page_num)
+
+        except Exception as e:
+            print(f"解析表格响应失败: {str(e)}")
+            # 回退到文本解析
+            return self._parse_table_from_text(content, page_num)
+
+    def _parse_table_from_text(self, content: str, page_num: int) -> List[Dict[str, Any]]:
+        """从文本内容中解析表格信息（简单回退方案）"""
+        try:
+            # 这里可以实现简单的文本表格解析逻辑
+            # 由于这是一个复杂的功能，这里只提供一个基本的实现
+
+            lines = content.split('\n')
+            tables = []
+            current_table = None
+
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+
+                # 简单的表格检测逻辑
+                if '表格' in line or '|' in line or '表' in line:
+                    if current_table is None:
+                        current_table = {
+                            'table_id': len(tables) + 1,
+                            'title': line,
+                            'headers': [],
+                            'rows': [],
+                            'page': page_num,
+                            'position': f'第{page_num}页'
+                        }
+                        tables.append(current_table)
+                    else:
+                        # 如果检测到新的表格标记，结束当前表格
+                        current_table = None
+                elif current_table is not None:
+                    # 尝试解析表格行
+                    if '|' in line or '\t' in line:
+                        # 分割列
+                        if '|' in line:
+                            row = [cell.strip() for cell in line.split('|') if cell.strip()]
+                        else:
+                            row = [cell.strip() for cell in line.split('\t') if cell.strip()]
+
+                        if len(row) > 1:
+                            if not current_table['headers']:
+                                current_table['headers'] = row
+                            else:
+                                current_table['rows'].append(row)
+
+            return tables
+
+        except Exception as e:
+            print(f"文本表格解析失败: {str(e)}")
+            return []
+
+    def _format_tables_to_text(self, table_data: List[Dict[str, Any]]) -> str:
+        """将表格数据转换为格式化的文本"""
+        if not table_data:
+            return ""
+
+        text_parts = []
+
+        for table in table_data:
+            table_text = []
+
+            # 添加表格标题
+            title = table.get('title', f"表格{table.get('table_id', 1)}")
+            table_text.append(f"\n## {title}")
+
+            if table.get('page'):
+                table_text.append(f"位置: 第{table['page']}页 {table.get('position', '')}")
+
+            # 添加表头
+            headers = table.get('headers', [])
+            if headers:
+                header_row = ' | '.join(str(h) for h in headers)
+                separator = ' | '.join(['---'] * len(headers))
+                table_text.append(header_row)
+                table_text.append(separator)
+
+            # 添加数据行
+            rows = table.get('rows', [])
+            for row in rows:
+                if isinstance(row, list):
+                    row_text = ' | '.join(str(cell) for cell in row)
+                else:
+                    row_text = str(row)
+                table_text.append(row_text)
+
+            # 添加表格间的分隔
+            table_text.append("")
+            text_parts.append('\n'.join(table_text))
+
+        return '\n'.join(text_parts)
     
     async def _create_pdf_from_text(self, text: str, job_id: str) -> str:
         """从文本创建PDF文件"""

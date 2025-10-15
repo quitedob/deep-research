@@ -34,11 +34,29 @@ PASSWORD_REQUIRE_LOWER = True
 PASSWORD_REQUIRE_DIGIT = True
 PASSWORD_REQUIRE_SPECIAL = True
 
-# JWT配置
-JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "dev-secret-change-me-please")
-JWT_REFRESH_SECRET_KEY = os.getenv("JWT_REFRESH_SECRET_KEY", "dev-refresh-secret-change-me-please")
-JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-JWT_ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+# 从配置系统获取JWT配置
+def get_jwt_config():
+    """从配置系统获取JWT配置"""
+    try:
+        from src.config.config_loader import get_settings
+        settings = get_settings()
+        return {
+            "secret_key": settings.security.secret_key,
+            "algorithm": settings.security.algorithm,
+            "access_token_expire_minutes": settings.security.access_token_expire_minutes,
+        }
+    except Exception as e:
+        logger.warning(f"无法从配置系统获取JWT设置，使用默认值: {e}")
+        return {
+            "secret_key": os.getenv("DEEP_RESEARCH_SECURITY_SECRET_KEY", "dev-secret-change-me-please"),
+            "algorithm": os.getenv("JWT_ALGORITHM", "HS256"),
+            "access_token_expire_minutes": int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "30")),
+        }
+
+jwt_config = get_jwt_config()
+JWT_SECRET_KEY = jwt_config["secret_key"]
+JWT_ALGORITHM = jwt_config["algorithm"]
+JWT_ACCESS_TOKEN_EXPIRE_MINUTES = jwt_config["access_token_expire_minutes"]
 JWT_REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("JWT_REFRESH_TOKEN_EXPIRE_DAYS", "7"))
 
 def hash_password(password: str) -> str:
@@ -120,12 +138,12 @@ def create_refresh_token(*, sub: str, role: str) -> str:
         "jti": generate_secure_token(16)
     }
 
-    return jwt.encode(payload, JWT_REFRESH_SECRET_KEY, algorithm=JWT_ALGORITHM)
+    return jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
 
 def decode_token(token: str, token_type: str = "access") -> dict:
     """解码令牌"""
     try:
-        secret = JWT_SECRET_KEY if token_type == "access" else JWT_REFRESH_SECRET_KEY
+        secret = JWT_SECRET_KEY  # 使用统一的密钥
         payload = jwt.decode(token, secret, algorithms=[JWT_ALGORITHM])
 
         # 验证令牌类型

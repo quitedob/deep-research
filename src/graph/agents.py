@@ -3,6 +3,9 @@
 定义多智能体系统中的各个智能体节点。
 """
 
+from pathlib import Path
+from typing import List, Dict, Any
+
 from .state import GraphState
 from ..rag.retrieval import search_documents  # 假设已有检索服务
 from ..rag.reranker import rerank_documents  # 需要创建的重排序服务
@@ -11,6 +14,7 @@ from ..rag.reranker import rerank_documents  # 需要创建的重排序服务
 async def supervisor_node(state: GraphState) -> dict:
     """
     主管智能体：负责规划、路由和评估。
+    基于LLM驱动的智能决策系统
     """
     print("---SUPERVISOR---")
     iteration_count = state.get("iteration_count", 0)
@@ -22,7 +26,8 @@ async def supervisor_node(state: GraphState) -> dict:
             "research_plan": plan,
             "next_action": "researcher",
             "iteration_count": 1,
-            "error_log": []
+            "error_log": [],
+            "planning_method": "llm_driven"  # 标记使用了LLM驱动规划
         }
 
     # 检查是否有错误
@@ -40,6 +45,16 @@ async def supervisor_node(state: GraphState) -> dict:
     # 评估当前状态并决定下一步行动
     next_action = await evaluate_and_route(state)
 
+    # 处理特殊动作
+    if next_action == "reflection":
+        reflection_result = await reflection_node(state)
+        return {
+            "next_action": reflection_result["next_action"],
+            "iteration_count": iteration_count + 1,
+            "reflection_result": reflection_result.get("reflection_result"),
+            "reflection_applied": True
+        }
+
     return {
         "next_action": next_action,
         "iteration_count": iteration_count + 1
@@ -48,50 +63,205 @@ async def supervisor_node(state: GraphState) -> dict:
 
 async def generate_research_plan(query: str) -> list:
     """
-    生成详细的研究计划。
-    暂时使用硬编码逻辑，未来可以集成LLM生成更智能的计划。
+    使用LLM生成智能的研究计划
+    基于LangGraph的Plan-and-Execute架构
     """
-    # 分析查询类型和复杂度
-    query_lower = query.lower()
+    try:
+        from ..llms.router import SmartModelRouter
+        from ..config.config_loader import get_settings
+        import json
 
+        # 获取配置的路由器
+        settings = get_settings()
+        router = SmartModelRouter.from_conf(Path(settings.get('CONFIG_FILE', 'conf.yaml')))
+
+        # 构造规划提示词
+        planning_prompt = f"""
+        你是一个专业的研究规划师。请为以下研究查询生成一个详细、可执行的研究计划。
+
+        研究查询：{query}
+
+        请生成一个JSON格式的研究计划，包含以下结构：
+        {{
+            "plan_summary": "对整个研究计划的简要总结",
+            "estimated_steps": 3,
+            "steps": [
+                {{
+                    "step": 1,
+                    "agent": "researcher",
+                    "task": "具体的任务描述",
+                    "description": "详细的任务说明",
+                    "tools_needed": ["工具1", "工具2"],
+                    "expected_output": "预期的输出结果",
+                    "success_criteria": "成功的标准"
+                }}
+            ]
+        }}
+
+        指导原则：
+        1. 根据查询复杂度智能调整步骤数量（3-7步）
+        2. 为技术类查询安排代码分析步骤
+        3. 为分析类查询安排数据分析步骤
+        4. 总是以综合报告生成作为最后一步
+        5. 确保每个步骤都有明确的成功标准
+        6. 选择合适的工具和智能体
+
+        可用的智能体：
+        - researcher: 信息检索和研究
+        - coder: 代码分析和技术实现
+        - writer: 报告撰写和总结
+        - analyst: 数据分析和可视化
+
+        可用的工具：
+        - web_search: 网络搜索
+        - arxiv_search: 学术论文搜索
+        - rag_retrieval: 内部知识库检索
+        - code_search: 代码搜索
+        - github_search: GitHub代码库搜索
+        - technical_docs: 技术文档分析
+        - data_analysis: 数据分析
+        - visualization: 数据可视化
+        - statistics: 统计分析
+        - markdown_writer: Markdown报告生成
+        - evidence_synthesis: 证据综合分析
+
+        请只返回JSON格式的计划，不要包含其他解释文本。
+        """
+
+        # 调用LLM生成计划
+        messages = [{"role": "user", "content": planning_prompt}]
+        result = await router.route_and_chat(
+            task_type="research",
+            messages=messages,
+            temperature=0.3,  # 使用较低温度确保计划结构化
+            max_tokens=2000,
+            quality_requirement=0.8
+        )
+
+        # 解析LLM响应
+        content = result.get("content", "")
+
+        # 尝试提取JSON
+        try:
+            # 清理可能的markdown代码块标记
+            content = content.strip()
+            if content.startswith("```json"):
+                content = content[7:]
+            if content.endswith("```"):
+                content = content[:-3]
+            content = content.strip()
+
+            plan_data = json.loads(content)
+
+            # 验证计划结构
+            if not isinstance(plan_data, dict) or "steps" not in plan_data:
+                raise ValueError("Invalid plan structure")
+
+            steps = plan_data["steps"]
+            if not isinstance(steps, list) or len(steps) == 0:
+                raise ValueError("No steps found in plan")
+
+            # 验证每个步骤的必需字段
+            for i, step in enumerate(steps):
+                if not all(key in step for key in ["step", "agent", "task", "description"]):
+                    raise ValueError(f"Step {i+1} missing required fields")
+
+            print(f"Generated intelligent research plan with {len(steps)} steps")
+            print(f"Plan summary: {plan_data.get('plan_summary', 'No summary')}")
+
+            return steps
+
+        except (json.JSONDecodeError, ValueError) as e:
+            print(f"Failed to parse LLM plan: {e}")
+            print("Falling back to adaptive plan generation")
+            return await generate_adaptive_fallback_plan(query)
+
+    except Exception as e:
+        print(f"LLM plan generation failed: {e}")
+        print("Using fallback plan generation")
+        return await generate_adaptive_fallback_plan(query)
+
+
+async def generate_adaptive_fallback_plan(query: str) -> list:
+    """
+    自适应回退计划生成（比原始关键词匹配更智能）
+    """
+    query_lower = query.lower()
     plan = []
 
-    # 基础信息收集
+    # 分析查询复杂度和类型
+    complexity_indicators = {
+        'technical': ['code', 'programming', 'algorithm', 'software', 'api', 'framework', 'implementation'],
+        'analytical': ['analyze', 'compare', 'statistics', 'data', 'trend', 'performance', 'evaluation'],
+        'research': ['research', 'study', 'investigate', 'review', 'survey', 'examination'],
+        'comprehensive': ['comprehensive', 'detailed', 'in-depth', 'thorough', 'complete']
+    }
+
+    detected_types = []
+    for type_name, keywords in complexity_indicators.items():
+        if any(keyword in query_lower for keyword in keywords):
+            detected_types.append(type_name)
+
+    # 基础信息收集（总是第一步）
     plan.append({
         "step": 1,
         "agent": "researcher",
-        "task": f"Perform comprehensive search for: {query}",
-        "description": "Gather diverse sources of information from web, academic papers, and internal knowledge base",
-        "tools_needed": ["web_search", "arxiv_search", "wikipedia_search", "rag_retrieval"]
+        "task": f"Conduct comprehensive information gathering for: {query}",
+        "description": "Systematically collect information from multiple sources including web search, academic databases, and internal knowledge base",
+        "tools_needed": ["web_search", "arxiv_search", "wikipedia_search", "rag_retrieval"],
+        "expected_output": "Relevant documents and sources",
+        "success_criteria": "At least 5 high-quality sources collected"
     })
 
-    # 如果是技术相关的问题，添加代码分析
-    if any(keyword in query_lower for keyword in ["code", "programming", "algorithm", "software", "api", "framework"]):
+    current_step = 2
+
+    # 根据检测到的类型添加专门步骤
+    if 'technical' in detected_types:
         plan.append({
-            "step": 2,
+            "step": current_step,
             "agent": "researcher",
-            "task": f"Analyze technical aspects and code examples related to: {query}",
-            "description": "Focus on technical implementation details, code examples, and best practices",
-            "tools_needed": ["code_search", "github_search", "technical_docs"]
+            "task": f"Analyze technical implementations and code examples for: {query}",
+            "description": "Focus on technical details, code samples, best practices, and implementation strategies",
+            "tools_needed": ["code_search", "github_search", "technical_docs"],
+            "expected_output": "Technical analysis and code examples",
+            "success_criteria": "Technical concepts clearly explained with examples"
         })
+        current_step += 1
 
-    # 如果需要数据分析，添加分析步骤
-    if any(keyword in query_lower for keyword in ["analyze", "compare", "statistics", "data", "trend", "performance"]):
+    if 'analytical' in detected_types:
         plan.append({
-            "step": 3,
-            "agent": "coder",  # 未来实现
-            "task": f"Analyze data and provide quantitative insights for: {query}",
-            "description": "Perform data analysis, create visualizations, and extract key metrics",
-            "tools_needed": ["data_analysis", "visualization", "statistics"]
+            "step": current_step,
+            "agent": "researcher",
+            "task": f"Perform analytical review and data synthesis for: {query}",
+            "description": "Analyze data patterns, compare different approaches, and synthesize analytical insights",
+            "tools_needed": ["data_analysis", "statistics", "rag_retrieval"],
+            "expected_output": "Analytical findings and data insights",
+            "success_criteria": "Clear analytical framework with supporting evidence"
         })
+        current_step += 1
 
-    # 最终报告生成
+    # 如果是综合性查询，添加深度分析步骤
+    if 'comprehensive' in detected_types or len(detected_types) > 1:
+        plan.append({
+            "step": current_step,
+            "agent": "researcher",
+            "task": f"Conduct in-depth cross-domain analysis for: {query}",
+            "description": "Integrate information from multiple domains and provide comprehensive coverage",
+            "tools_needed": ["web_search", "rag_retrieval", "arxiv_search"],
+            "expected_output": "Cross-domain insights and comprehensive analysis",
+            "success_criteria": "Multiple perspectives integrated with supporting evidence"
+        })
+        current_step += 1
+
+    # 最终报告生成（总是最后一步）
     plan.append({
-        "step": len(plan) + 1,
+        "step": current_step,
         "agent": "writer",
-        "task": f"Generate comprehensive report synthesizing all findings for: {query}",
-        "description": "Create a well-structured report with conclusions, recommendations, and supporting evidence",
-        "tools_needed": ["markdown_writer", "evidence_synthesis"]
+        "task": f"Generate comprehensive research report for: {query}",
+        "description": "Create well-structured report with executive summary, findings, analysis, conclusions, and recommendations",
+        "tools_needed": ["markdown_writer", "evidence_synthesis"],
+        "expected_output": "Complete research report",
+        "success_criteria": "Report covers all aspects with clear conclusions"
     })
 
     return plan
@@ -99,40 +269,226 @@ async def generate_research_plan(query: str) -> list:
 
 async def evaluate_and_route(state: GraphState) -> str:
     """
-    评估当前状态并决定下一步行动。
+    智能评估当前状态并决定下一步行动
+    基于LLM的反思和重规划机制
     """
-    iteration_count = state.get("iteration_count", 0)
-    plan = state.get("research_plan", [])
+    try:
+        from ..llms.router import SmartModelRouter
+        from ..config.config_loader import get_settings
+
+        iteration_count = state.get("iteration_count", 0)
+        plan = state.get("research_plan", [])
+        retrieved_docs = state.get("retrieved_documents", [])
+        draft_report = state.get("draft_report")
+        original_query = state.get("original_query", "")
+        error_log = state.get("error_log", [])
+
+        # 如果还有计划步骤未完成，执行下一步
+        if iteration_count <= len(plan):
+            current_step_index = iteration_count - 1
+            if current_step_index < len(plan):
+                next_step = plan[current_step_index]
+
+                # 检查当前步骤是否完成
+                if await is_step_completed(next_step, state):
+                    print(f"Step {next_step['step']} completed successfully")
+                    # 继续下一步或进入反思阶段
+                    if current_step_index + 1 < len(plan):
+                        return plan[current_step_index + 1]["agent"]
+                    else:
+                        return "reflection"  # 所有步骤完成，进入反思
+                else:
+                    return next_step["agent"]  # 继续当前步骤
+
+        # 如果没有明确计划或计划已完成，使用LLM智能路由
+        return await llm_intelligent_routing(state)
+
+    except Exception as e:
+        print(f"Intelligent routing failed: {e}")
+        # 回退到简单路由逻辑
+        return fallback_routing(state)
+
+
+async def is_step_completed(step: Dict[str, Any], state: GraphState) -> bool:
+    """
+    检查研究步骤是否完成
+    """
+    step_type = step.get("agent", "")
+    success_criteria = step.get("success_criteria", "")
+
+    if step_type == "researcher":
+        # 检查是否收集到足够的信息
+        retrieved_docs = state.get("retrieved_documents", [])
+        return len(retrieved_docs) >= 3  # 至少3个文档
+
+    elif step_type == "writer":
+        # 检查是否生成了报告
+        draft_report = state.get("draft_report")
+        return draft_report is not None and len(draft_report) > 200
+
+    elif step_type == "analyst":
+        # 检查是否进行了数据分析
+        analysis_result = state.get("analysis_result")
+        return analysis_result is not None
+
+    else:
+        # 默认认为步骤完成
+        return True
+
+
+async def llm_intelligent_routing(state: GraphState) -> str:
+    """
+    使用LLM进行智能路由决策
+    """
+    try:
+        from ..llms.router import SmartModelRouter
+        from ..config.config_loader import get_settings
+
+        settings = get_settings()
+        router = SmartModelRouter.from_conf(Path(settings.get('CONFIG_FILE', 'conf.yaml')))
+
+        # 构建状态摘要
+        state_summary = f"""
+        当前研究状态评估：
+
+        研究查询：{state.get('original_query', '')}
+        当前迭代：{state.get('iteration_count', 0)}
+        已收集文档数：{len(state.get('retrieved_documents', []))}
+        报告状态：{'已生成' if state.get('draft_report') else '未生成'}
+        错误次数：{len(state.get('error_log', []))}
+
+        请分析当前状态并决定下一步行动。可选行动：
+        - researcher: 继续收集信息
+        - writer: 生成或完善报告
+        - analyst: 进行数据分析
+        - reflection: 反思和重规划
+        - finish: 完成研究
+
+        请返回一个行动名称，只返回行动名称，不要解释。
+        """
+
+        messages = [{"role": "user", "content": state_summary}]
+        result = await router.route_and_chat(
+            task_type="reasoning",
+            messages=messages,
+            temperature=0.2,  # 低温度确保决策稳定
+            max_tokens=100,
+            quality_requirement=0.9
+        )
+
+        action = result.get("content", "").strip().lower()
+
+        # 验证返回的行动
+        valid_actions = ["researcher", "writer", "analyst", "reflection", "finish"]
+        if action in valid_actions:
+            return action
+        else:
+            print(f"Invalid action from LLM: {action}, using fallback")
+            return "finish"
+
+    except Exception as e:
+        print(f"LLM routing failed: {e}")
+        return "finish"
+
+
+async def reflection_node(state: GraphState) -> dict:
+    """
+    反思节点：评估研究质量并决定是否需要额外步骤
+    """
+    print("---REFLECTION---")
+
+    try:
+        from ..llms.router import SmartModelRouter
+        from ..config.config_loader import get_settings
+
+        settings = get_settings()
+        router = SmartModelRouter.from_conf(Path(settings.get('CONFIG_FILE', 'conf.yaml')))
+
+        # 构建反思提示词
+        reflection_prompt = f"""
+        请对当前的研究结果进行反思和评估。
+
+        研究查询：{state.get('original_query', '')}
+        收集的文档数量：{len(state.get('retrieved_documents', []))}
+        报告状态：{'已生成' if state.get('draft_report') else '未生成'}
+        报告长度：{len(state.get('draft_report', ''))} 字符
+
+        请评估：
+        1. 信息收集是否充分？
+        2. 报告质量是否满足要求？
+        3. 是否需要额外的分析或信息？
+        4. 研究是否可以结束？
+
+        请返回JSON格式的评估结果：
+        {{
+            "information_sufficiency": "sufficient/insufficient/adequate",
+            "report_quality": "excellent/good/fair/poor",
+            "needs_additional_work": true/false,
+            "recommended_actions": ["action1", "action2"],
+            "can_finish": true/false,
+            "reasoning": "评估理由"
+        }}
+        """
+
+        messages = [{"role": "user", "content": reflection_prompt}]
+        result = await router.route_and_chat(
+            task_type="reasoning",
+            messages=messages,
+            temperature=0.3,
+            max_tokens=500,
+            quality_requirement=0.8
+        )
+
+        try:
+            import json
+            content = result.get("content", "")
+
+            # 清理JSON响应
+            content = content.strip()
+            if content.startswith("```json"):
+                content = content[7:]
+            if content.endswith("```"):
+                content = content[:-3]
+            content = content.strip()
+
+            evaluation = json.loads(content)
+
+            print(f"Reflection evaluation: {evaluation.get('reasoning', 'No reasoning')}")
+
+            # 根据评估结果决定下一步
+            if evaluation.get("can_finish", False):
+                return {"next_action": "finish", "reflection_result": evaluation}
+            elif evaluation.get("needs_additional_work", False):
+                actions = evaluation.get("recommended_actions", [])
+                if actions:
+                    return {"next_action": actions[0], "reflection_result": evaluation}
+                else:
+                    return {"next_action": "researcher", "reflection_result": evaluation}
+            else:
+                return {"next_action": "writer", "reflection_result": evaluation}
+
+        except json.JSONDecodeError:
+            print("Failed to parse reflection JSON, defaulting to finish")
+            return {"next_action": "finish", "reflection_result": {"parsing_error": True}}
+
+    except Exception as e:
+        print(f"Reflection failed: {e}")
+        return {"next_action": "finish", "reflection_result": {"error": str(e)}}
+
+
+def fallback_routing(state: GraphState) -> str:
+    """
+    简单的回退路由逻辑
+    """
     retrieved_docs = state.get("retrieved_documents", [])
     draft_report = state.get("draft_report")
 
-    # 如果还没有完成所有计划步骤，继续执行计划
-    if iteration_count <= len(plan):
-        current_step_index = iteration_count - 1
-        if current_step_index < len(plan):
-            next_step = plan[current_step_index]
-            return next_step["agent"]
-
-    # 如果有报告生成，检查是否需要完善
-    if draft_report:
-        # 简单的质量检查（未来可以更复杂）
-        if len(draft_report) < 500:  # 报告太短
-            return "writer"  # 重新生成更详细的报告
-        elif len(retrieved_docs) < 3:  # 信息来源不足
-            return "researcher"  # 收集更多信息
-        else:
-            return "finish"  # 完成工作流
-
-    # 如果有文档但没有报告，开始写报告
-    if retrieved_docs and not draft_report:
-        return "writer"
-
-    # 默认情况下，如果有疑问，收集更多信息
-    if len(retrieved_docs) < 5:
+    if len(retrieved_docs) < 3:
         return "researcher"
-
-    # 最终完成
-    return "finish"
+    elif not draft_report:
+        return "writer"
+    else:
+        return "finish"
 
 
 async def researcher_node(state: GraphState) -> dict:

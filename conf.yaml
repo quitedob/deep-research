@@ -27,7 +27,7 @@ KIMI_LONG_CONTEXT_MODEL: "moonshot-v1-128k"  # 长上下文模型
 DEFAULT_SEARCH_PROVIDER: "doubao"  # 默认搜索提供商: doubao | kimi
 
 # --- Ollama 本地模型配置 ---
-OLLAMA_BASE_URL: "http://localhost:11434/v1"
+OLLAMA_BASE_URL: "http://localhost:11434"
 OLLAMA_SMALL_MODEL: "gemma3:4b"     # 用于简单聊天、路由分类
 OLLAMA_LARGE_MODEL: "qwen3:32b"     # 用于复杂推理、研究任务
 OLLAMA_VISION_MODEL: "qwen2.5vl:7b" # 用于多模态任务
@@ -47,6 +47,31 @@ DEEPSEEK_MODELS:
   chat: "deepseek-chat"        # 通用对话、数据分析
   reasoner: "deepseek-reasoner"  # 深度推理、复杂分析
 
+# --- ZhipuAI (智谱AI) 配置 ---
+# 支持多种GLM模型，具备强大的搜索和推理能力
+ZHIPUAI_BASE_URL: "https://open.bigmodel.cn/api/paas/v4"
+ZHIPUAI_ENABLE_VISION: true  # 启用视觉功能
+
+# ZhipuAI模型映射
+ZHIPUAI_MODELS:
+  chat: "glm-4.5-air"                     # 默认聊天模型（高性价比）
+  reasoning: "glm-4.6"                     # 推理模型（旗舰，最强性能）
+  vision: "glm-4.1v-thinking-flash"        # 视觉模型（免费，多模态推理）
+  search: "glm-4.5-flash"                  # 搜索模型（免费，网络搜索）
+  free: "glm-4.5-flash"                    # 免费模型（快速响应）
+  premium: "glm-4.6"                       # 旗舰模型（最高质量）
+  cost_effective: "glm-4.5-air"            # 高性价比模型
+
+# ZhipuAI搜索引擎配置
+ZHIPUAI_SEARCH_ENGINES:
+  search_std: "基础版（智谱AI自研）"        # 基础版，性价比极高
+  search_pro: "高级版（智谱AI自研）"        # 高级版，多引擎协作
+  search_pro_sogou: "搜狗"                  # 搜狗，覆盖腾讯生态
+  search_pro_quark: "夸克"                  # 夸克，精准触达垂直内容
+
+ZHIPUAI_DEFAULT_SEARCH_ENGINE: "search_pro"  # 默认搜索引擎
+ZHIPUAI_MAX_SEARCH_RESULTS: 10              # 最大搜索结果数
+
 # DeepSeek任务类型到temperature的映射
 DEEPSEEK_TEMPERATURE_MAP:
   code: 0.0          # 代码生成/数学解题
@@ -58,15 +83,18 @@ DEEPSEEK_TEMPERATURE_MAP:
   poetry: 1.5        # 诗歌创作
 
 # --- 智能路由配置 ---
-# 根据任务类型配置提供者优先级
+# 根据任务类型配置提供者优先级 - 平衡所有四个提供商
 PROVIDER_PRIORITY:
-  triage: ["ollama", "deepseek"]      # 路由分类优先本地
-  simple_chat: ["ollama", "deepseek"] # 简单聊天优先本地
-  code: ["deepseek", "ollama"]        # 代码任务优先DeepSeek
-  reasoning: ["deepseek", "ollama"]   # 推理任务优先DeepSeek
-  research: ["deepseek", "ollama"]    # 研究任务优先DeepSeek
-  creative: ["deepseek", "ollama"]    # 创意任务优先DeepSeek
-  general: ["ollama", "deepseek"]     # 通用任务优先本地
+  triage: ["ollama", "doubao", "zhipuai", "deepseek"]      # 路由分类：本地优先，云服务备用
+  simple_chat: ["ollama", "zhipuai", "doubao", "deepseek"] # 简单聊天：本地免费优先
+  code: ["deepseek", "zhipuai", "ollama", "doubao"]        # 代码任务：DeepSeek最强，ZhipuAI次之
+  reasoning: ["zhipuai", "deepseek", "ollama", "doubao"]   # 推理任务：ZhipuAI GLM-4.6旗舰
+  research: ["zhipuai", "doubao", "kimi", "deepseek", "ollama"]    # 研究任务：搜索能力优先
+  analysis: ["zhipuai", "doubao", "deepseek", "kimi", "ollama"]   # 分析任务：平衡各提供商优势
+  creative: ["zhipuai", "doubao", "deepseek", "ollama"]    # 创意任务：ZhipuAI和Doubao
+  vision: ["zhipuai", "doubao", "ollama", "deepseek"]        # 视觉任务：ZhipuAI免费，Doubao专业
+  search: ["zhipuai", "doubao", "kimi", "deepseek", "ollama"]   # 搜索任务：集成搜索能力优先
+  general: ["ollama", "zhipuai", "doubao", "deepseek"]     # 通用任务：本地优先，云端备用
 
 # 路由置信度阈值
 TRIAGE_CONFIDENCE_THRESHOLD: 0.7  # 低于此置信度将使用更强模型
@@ -187,15 +215,15 @@ CORS_ALLOW_METHODS: "GET,POST,PUT,DELETE,OPTIONS"
 CORS_ALLOW_HEADERS: "Authorization,Content-Type,X-Requested-With,Accept,Accept-Encoding,Accept-Language,Cache-Control,Connection,Host,User-Agent,X-Request-ID"
 CORS_MAX_AGE: 86400  # 24小时
 
-# 会话安全配置
-SESSION_SECRET_KEY: "${SESSION_SECRET_KEY:your-secret-key-change-in-production}"  # 生产环境必须更改
-JWT_SECRET_KEY: "${JWT_SECRET_KEY:your-jwt-secret-change-in-production}"  # 生产环境必须更改
+# JWT配置（通过环境变量 DEEP_RESEARCH_SECURITY_SECRET_KEY 设置）
 JWT_ACCESS_TOKEN_EXPIRE_MINUTES: 60
 JWT_ALGORITHM: "HS256"
 
 # API密钥配置（通过环境变量设置）
 # DEEPSEEK_API_KEY: 通过环境变量设置
 # MOONSHOT_API_KEY: 通过环境变量设置
+# ZHIPUAI_API_KEY: 智谱AI API密钥（通过环境变量设置）
+# DOUBAO_API_KEY: 豆包API密钥（通过环境变量设置）
 # VOLCENGINE_TTS_APPID: 通过环境变量设置
 # VOLCENGINE_TTS_ACCESS_TOKEN: 通过环境变量设置
 
@@ -224,7 +252,7 @@ AUTO_CREATE_TABLES: true  # 开发环境自动创建表
 REDIS_URL: "${REDIS_URL:redis://localhost:6379}"
 
 # --- JWT 配置 ---
-SECRET_KEY: "${SECRET_KEY:your_super_secret_jwt_key_here_make_it_long_and_random}"
+# 密钥通过环境变量 DEEP_RESEARCH_SECURITY_SECRET_KEY 设置
 ALGORITHM: "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES: 30
 

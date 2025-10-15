@@ -423,99 +423,201 @@ async def search_documents(
     query: str,
     current_user: User = Depends(get_current_user),
     limit: int = 10,
-    score_threshold: float = 0.0
+    score_threshold: float = 0.0,
+    use_reranking: bool = True
 ):
     """
-    在用户的文档中进行语义搜索
+    在用户的文档中进行语义搜索（支持两阶段检索和重排序）
+
+    Args:
+        query: 搜索查询
+        current_user: 当前用户
+        limit: 返回结果数量限制
+        score_threshold: 分数阈值
+        use_reranking: 是否使用重排序（默认True）
     """
     try:
         from src.rag.pgvector_store import get_pgvector_store
+        from src.core.rag.reranker import TwoStageRAGRetriever, CrossEncoderReranker
         from src.api.evidence import EvidenceResponse
 
         # 获取pgvector存储实例
         pgvector_store = get_pgvector_store()
 
-        # 执行向量搜索
-        search_results = await pgvector_store.search(
-            query=query,
-            top_k=limit,
-            filter_metadata={"user_id": current_user.id},
-            score_threshold=score_threshold
-        )
+        # 使用两阶段检索器
+        if use_reranking:
+            # 创建重排序器
+            reranker = CrossEncoderReranker()
 
-        # 转换结果格式
-        results = []
-        for doc, score in search_results:
-            result = {
-                "chunk_id": doc.id,
-                "document_id": doc.metadata.get("document_id"),
-                "content": doc.content,
-                "score": score,
-                "source_url": doc.metadata.get("source_url"),
-                "filename": doc.metadata.get("filename"),
-                "snippet": doc.content[:200] + "..." if len(doc.content) > 200 else doc.content,
-                "citation_id": doc.metadata.get("citation_id"),
-                "metadata": doc.metadata
-            }
-            results.append(result)
+            # 创建两阶段检索器
+            retriever = TwoStageRAGRetriever(
+                vector_store=pgvector_store,
+                reranker=reranker,
+                recall_top_k=min(50, limit * 5),  # 召回更多候选文档
+                final_top_k=limit,
+                min_score_threshold=max(score_threshold, 0.1)
+            )
+
+            # 执行两阶段检索
+            search_results = await retriever.search(
+                query=query,
+                filter_metadata={"user_id": current_user.id},
+                score_threshold=score_threshold
+            )
+
+            # 转换结果格式
+            results = []
+            for doc_score in search_results:
+                result = {
+                    "chunk_id": doc_score.document_id,
+                    "document_id": doc_score.metadata.get("document_id"),
+                    "content": doc_score.content,
+                    "score": doc_score.final_score,
+                    "recall_score": doc_score.recall_score,
+                    "rerank_score": doc_score.rerank_score,
+                    "source_url": doc_score.metadata.get("source_url"),
+                    "filename": doc_score.metadata.get("filename"),
+                    "snippet": doc_score.content[:200] + "..." if len(doc_score.content) > 200 else doc_score.content,
+                    "citation_id": doc_score.metadata.get("citation_id"),
+                    "metadata": doc_score.metadata
+                }
+                results.append(result)
+
+            message = f"两阶段检索完成（召回50个候选，重排序后返回{len(results)}个）"
+
+        else:
+            # 传统单阶段搜索
+            search_results = await pgvector_store.search(
+                query=query,
+                top_k=limit,
+                filter_metadata={"user_id": current_user.id},
+                score_threshold=score_threshold
+            )
+
+            # 转换结果格式
+            results = []
+            for doc, score in search_results:
+                result = {
+                    "chunk_id": doc.id,
+                    "document_id": doc.metadata.get("document_id"),
+                    "content": doc.content,
+                    "score": score,
+                    "recall_score": score,
+                    "rerank_score": None,
+                    "source_url": doc.metadata.get("source_url"),
+                    "filename": doc.metadata.get("filename"),
+                    "snippet": doc.content[:200] + "..." if len(doc.content) > 200 else doc.content,
+                    "citation_id": doc.metadata.get("citation_id"),
+                    "metadata": doc.metadata
+                }
+                results.append(result)
+
+            message = "传统向量搜索完成"
 
         # 同时记录到证据链
         if results:
-            evidence_results = await pgvector_store.search_with_evidence(
-                query=query,
-                top_k=limit,
-                conversation_id=None,  # 可以从请求参数获取
-                research_session_id=None  # 可以从请求参数获取
-            )
+            try:
+                evidence_results = await pgvector_store.search_with_evidence(
+                    query=query,
+                    top_k=limit,
+                    conversation_id=None,  # 可以从请求参数获取
+                    research_session_id=None  # 可以从请求参数获取
+                )
+            except Exception as e:
+                logger.warning(f"记录证据链失败: {e}")
 
         return {
             "query": query,
             "results": results,
             "total": len(results),
-            "message": "向量搜索完成"
+            "search_method": "two_stage_reranking" if use_reranking else "traditional",
+            "message": message
         }
 
     except Exception as e:
-        # 如果pgvector搜索失败，尝试回退到其他搜索方法
-        try:
-            from src.rag.retriever import create_default_retriever
+        logger.error(f"搜索失败: {e}")
 
-            retriever = create_default_retriever()
-            search_results = retriever.search(
+        # 如果两阶段检索失败，尝试回退到传统搜索
+        try:
+            search_results = await pgvector_store.search(
                 query=query,
                 top_k=limit,
-                filter_metadata={"user_id": str(current_user.id)}
+                filter_metadata={"user_id": current_user.id},
+                score_threshold=score_threshold
             )
 
+            # 转换结果格式
             results = []
-            for doc in search_results.documents:
-                if doc.metadata.get("user_id") == current_user.id:
-                    result = {
-                        "chunk_id": doc.id,
-                        "document_id": doc.metadata.get("original_doc_id"),
-                        "content": doc.content,
-                        "score": search_results.scores[len(results)],
-                        "source_url": doc.metadata.get("source"),
-                        "filename": doc.metadata.get("source", "unknown"),
-                        "snippet": doc.content[:200] + "..." if len(doc.content) > 200 else doc.content,
-                        "citation_id": doc.metadata.get("citation_id", str(uuid.uuid4())),
-                        "metadata": doc.metadata
-                    }
-                    results.append(result)
+            for doc, score in search_results:
+                result = {
+                    "chunk_id": doc.id,
+                    "document_id": doc.metadata.get("document_id"),
+                    "content": doc.content,
+                    "score": score,
+                    "recall_score": score,
+                    "rerank_score": None,
+                    "source_url": doc.metadata.get("source_url"),
+                    "filename": doc.metadata.get("filename"),
+                    "snippet": doc.content[:200] + "..." if len(doc.content) > 200 else doc.content,
+                    "citation_id": doc.metadata.get("citation_id"),
+                    "metadata": doc.metadata
+                }
+                results.append(result)
 
             return {
                 "query": query,
                 "results": results,
                 "total": len(results),
-                "message": "使用备用搜索方法完成"
+                "search_method": "fallback_traditional",
+                "message": "回退到传统搜索方法完成"
             }
 
         except Exception as fallback_error:
-            logger.error(f"搜索失败: 主方法-{str(e)}, 备用方法-{str(fallback_error)}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="搜索服务暂时不可用，请稍后重试"
-            )
+            logger.error(f"搜索完全失败: 主方法-{str(e)}, 备用方法-{str(fallback_error)}")
+
+            # 最后的回退选项
+            try:
+                from src.rag.retriever import create_default_retriever
+
+                retriever = create_default_retriever()
+                search_results = retriever.search(
+                    query=query,
+                    top_k=limit,
+                    filter_metadata={"user_id": str(current_user.id)}
+                )
+
+                results = []
+                for doc in search_results.documents:
+                    if doc.metadata.get("user_id") == current_user.id:
+                        result = {
+                            "chunk_id": doc.id,
+                            "document_id": doc.metadata.get("original_doc_id"),
+                            "content": doc.content,
+                            "score": search_results.scores[len(results)],
+                            "recall_score": search_results.scores[len(results)],
+                            "rerank_score": None,
+                            "source_url": doc.metadata.get("source"),
+                            "filename": doc.metadata.get("source", "unknown"),
+                            "snippet": doc.content[:200] + "..." if len(doc.content) > 200 else doc.content,
+                            "citation_id": doc.metadata.get("citation_id", str(uuid.uuid4())),
+                            "metadata": doc.metadata
+                        }
+                        results.append(result)
+
+                return {
+                    "query": query,
+                    "results": results,
+                    "total": len(results),
+                    "search_method": "last_resort",
+                    "message": "使用最后备用搜索方法完成"
+                }
+
+            except Exception as final_fallback_error:
+                logger.error(f"所有搜索方法都失败: {final_fallback_error}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="搜索服务暂时不可用，请稍后重试"
+                )
 
 
 # ===== 新增：知识库管理 API =====

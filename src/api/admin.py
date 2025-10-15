@@ -7,15 +7,16 @@
 import logging
 from typing import List, Optional
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..api.deps import require_auth
 from ..api.errors import create_error_response, ErrorCodes, handle_database_error, handle_not_found_error, APIException
-from ..sqlmodel.models import User
+from ..sqlmodel.models import User, AdminAuditLog
 from ..core.db import get_async_session
+from ..service.audit_service import AuditService, audit_admin_action, log_admin_action_dependency
 
 logger = logging.getLogger(__name__)
 
@@ -86,9 +87,37 @@ class APIUsageResponse(BaseModel):
     endpoint_called: str
     timestamp: datetime
     extra: Optional[str]
-    
+
     class Config:
         from_attributes = True
+
+
+class AuditLogResponse(BaseModel):
+    """审计日志响应"""
+    id: int
+    admin_user_id: str
+    admin_username: Optional[str]
+    action: str
+    target_user_id: Optional[str]
+    target_username: Optional[str]
+    timestamp: datetime
+    details: Optional[dict]
+    ip_address: Optional[str]
+    user_agent: Optional[str]
+    endpoint: Optional[str]
+    status: str
+    error_message: Optional[str]
+
+    class Config:
+        from_attributes = True
+
+
+class AuditLogListResponse(BaseModel):
+    """审计日志列表响应"""
+    logs: List[AuditLogResponse]
+    total: int
+    page: int
+    page_size: int
 
 
 # ==================== 权限检查 ====================
@@ -152,6 +181,7 @@ async def list_all_users(
 
 
 @router.get("/users/{user_id}", response_model=UserDetailResponse)
+@audit_admin_action(AuditService.ACTION_USER_VIEW, include_target=True)
 async def get_user_detail(
     user_id: str,
     current_admin: User = Depends(require_admin),
@@ -163,12 +193,12 @@ async def get_user_detail(
             select(User).where(User.id == user_id)
         )
         user = result.scalar_one_or_none()
-        
+
         if not user:
             return handle_not_found_error("用户", user_id)
-        
+
         return UserDetailResponse.from_orm(user)
-    
+
     except HTTPException:
         raise
     except Exception as e:
@@ -177,6 +207,7 @@ async def get_user_detail(
 
 
 @router.patch("/users/{user_id}")
+@audit_admin_action(AuditService.ACTION_USER_UPDATE, include_target=True)
 async def update_user(
     user_id: str,
     update_data: UserUpdateRequest,
@@ -185,7 +216,7 @@ async def update_user(
 ):
     """
     更新用户信息
-    
+
     - **is_active**: 封禁/解封用户
     - **role**: 修改用户角色
     """
@@ -195,10 +226,10 @@ async def update_user(
             select(User).where(User.id == user_id)
         )
         user = result.scalar_one_or_none()
-        
+
         if not user:
             return handle_not_found_error("用户", user_id)
-        
+
         # 防止管理员封禁自己
         if user.id == current_admin.id and update_data.is_active is False:
             raise APIException(
@@ -206,11 +237,11 @@ async def update_user(
                 message="不能封禁自己",
                 status_code=400
             )
-        
+
         # 更新字段
         if update_data.is_active is not None:
             user.is_active = update_data.is_active
-        
+
         if update_data.role is not None:
             if update_data.role not in ["free", "subscribed", "admin"]:
                 raise APIException(
@@ -219,16 +250,16 @@ async def update_user(
                     status_code=400
                 )
             user.role = update_data.role
-        
+
         await session.commit()
         await session.refresh(user)
-        
+
         return {
             "success": True,
             "message": "用户信息已更新",
             "user": UserDetailResponse.from_orm(user)
         }
-    
+
     except HTTPException:
         raise
     except Exception as e:
@@ -238,6 +269,7 @@ async def update_user(
 
 
 @router.post("/users/{user_id}/toggle-active")
+@audit_admin_action(AuditService.ACTION_USER_BAN, include_target=True)
 async def toggle_user_active(
     user_id: str,
     current_admin: User = Depends(require_admin),
@@ -249,10 +281,10 @@ async def toggle_user_active(
             select(User).where(User.id == user_id)
         )
         user = result.scalar_one_or_none()
-        
+
         if not user:
             return handle_not_found_error("用户", user_id)
-        
+
         # 防止管理员封禁自己
         if user.id == current_admin.id:
             raise APIException(
@@ -260,20 +292,41 @@ async def toggle_user_active(
                 message="不能封禁自己",
                 status_code=400
             )
-        
+
         # 切换状态
+        old_status = user.is_active
         user.is_active = not user.is_active
         await session.commit()
         await session.refresh(user)
-        
-        action = "解封" if user.is_active else "封禁"
-        
+
+        # 动态确定操作类型
+        action = AuditService.ACTION_USER_UNBAN if user.is_active else AuditService.ACTION_USER_BAN
+
+        # 手动记录详细的审计信息
+        await AuditService.log_admin_action(
+            session=session,
+            admin_user_id=current_admin.id,
+            action=action,
+            target_user_id=user_id,
+            details={
+                "old_status": old_status,
+                "new_status": user.is_active,
+                "username": user.username
+            },
+            ip_address=current_admin.__dict__.get("ip_address"),
+            user_agent=current_admin.__dict__.get("user_agent"),
+            endpoint=f"POST /admin/users/{user_id}/toggle-active",
+            status="success"
+        )
+
+        action_text = "解封" if user.is_active else "封禁"
+
         return {
             "success": True,
-            "message": f"用户已{action}",
+            "message": f"用户已{action_text}",
             "is_active": user.is_active
         }
-    
+
     except HTTPException:
         raise
     except Exception as e:
@@ -697,31 +750,201 @@ async def update_subscription(
         return handle_database_error(e)
 
 
+# ==================== 审计日志端点 ====================
+
+@router.get("/audit-logs", response_model=AuditLogListResponse)
+async def get_audit_logs(
+    admin_user_id: Optional[str] = Query(None, description="管理员ID筛选"),
+    action: Optional[str] = Query(None, description="操作类型筛选"),
+    target_user_id: Optional[str] = Query(None, description="目标用户ID筛选"),
+    status: Optional[str] = Query(None, description="状态筛选"),
+    start_date: Optional[datetime] = Query(None, description="开始日期"),
+    end_date: Optional[datetime] = Query(None, description="结束日期"),
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(50, ge=1, le=200, description="每页数量"),
+    current_admin: User = Depends(require_admin),
+    session: AsyncSession = Depends(get_async_session)
+):
+    """获取审计日志列表"""
+    try:
+        # 计算偏移量
+        offset = (page - 1) * page_size
+
+        # 获取审计日志
+        logs, total = await AuditService.get_audit_logs(
+            session=session,
+            admin_user_id=admin_user_id,
+            action=action,
+            target_user_id=target_user_id,
+            status=status,
+            start_date=start_date,
+            end_date=end_date,
+            limit=page_size,
+            offset=offset
+        )
+
+        # 补充用户信息
+        log_responses = []
+        for log in logs:
+            # 获取管理员用户名
+            admin_username = None
+            if log.admin_user_id:
+                admin_result = await session.execute(
+                    select(User.username).where(User.id == log.admin_user_id)
+                )
+                admin_username = admin_result.scalar()
+
+            # 获取目标用户名
+            target_username = None
+            if log.target_user_id:
+                target_result = await session.execute(
+                    select(User.username).where(User.id == log.target_user_id)
+                )
+                target_username = target_result.scalar()
+
+            log_response = AuditLogResponse(
+                id=log.id,
+                admin_user_id=log.admin_user_id,
+                admin_username=admin_username,
+                action=log.action,
+                target_user_id=log.target_user_id,
+                target_username=target_username,
+                timestamp=log.timestamp,
+                details=log.details,
+                ip_address=log.ip_address,
+                user_agent=log.user_agent,
+                endpoint=log.endpoint,
+                status=log.status,
+                error_message=log.error_message
+            )
+            log_responses.append(log_response)
+
+        return AuditLogListResponse(
+            logs=log_responses,
+            total=total,
+            page=page,
+            page_size=page_size
+        )
+
+    except Exception as e:
+        logger.error(f"获取审计日志失败: {e}")
+        return handle_database_error(e)
+
+
+@router.get("/audit-logs/summary")
+async def get_audit_log_summary(
+    current_admin: User = Depends(require_admin),
+    session: AsyncSession = Depends(get_async_session)
+):
+    """获取审计日志统计摘要"""
+    try:
+        from sqlalchemy import select, func, and_
+        from datetime import datetime, timedelta
+
+        # 获取过去30天的数据
+        thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+
+        # 总操作数
+        total_ops_result = await session.execute(
+            select(func.count(AdminAuditLog.id))
+            .where(AdminAuditLog.timestamp >= thirty_days_ago)
+        )
+        total_operations = total_ops_result.scalar()
+
+        # 按操作类型统计
+        action_stats_result = await session.execute(
+            select(
+                AdminAuditLog.action,
+                func.count(AdminAuditLog.id).label('count')
+            )
+            .where(AdminAuditLog.timestamp >= thirty_days_ago)
+            .group_by(AdminAuditLog.action)
+            .order_by(func.count(AdminAuditLog.id).desc())
+        )
+        action_stats = action_stats_result.fetchall()
+
+        # 按状态统计
+        status_stats_result = await session.execute(
+            select(
+                AdminAuditLog.status,
+                func.count(AdminAuditLog.id).label('count')
+            )
+            .where(AdminAuditLog.timestamp >= thirty_days_ago)
+            .group_by(AdminAuditLog.status)
+        )
+        status_stats = status_stats_result.fetchall()
+
+        # 活跃管理员统计
+        active_admins_result = await session.execute(
+            select(func.count(func.distinct(AdminAuditLog.admin_user_id)))
+            .where(AdminAuditLog.timestamp >= thirty_days_ago)
+        )
+        active_admins = active_admins_result.scalar()
+
+        # 最近7天每日操作数
+        seven_days_ago = datetime.utcnow() - timedelta(days=7)
+        daily_ops_result = await session.execute(
+            select(
+                func.date(AdminAuditLog.timestamp).label('date'),
+                func.count(AdminAuditLog.id).label('count')
+            )
+            .where(AdminAuditLog.timestamp >= seven_days_ago)
+            .group_by(func.date(AdminAuditLog.timestamp))
+            .order_by(func.date(AdminAuditLog.timestamp))
+        )
+        daily_ops = daily_ops_result.fetchall()
+
+        return {
+            "summary": {
+                "total_operations_30_days": total_operations,
+                "active_admins_30_days": active_admins,
+                "period_days": 30
+            },
+            "action_breakdown": [
+                {"action": row.action, "count": row.count}
+                for row in action_stats
+            ],
+            "status_breakdown": [
+                {"status": row.status, "count": row.count}
+                for row in status_stats
+            ],
+            "daily_operations": [
+                {"date": str(row.date), "count": row.count}
+                for row in daily_ops
+            ]
+        }
+
+    except Exception as e:
+        logger.error(f"获取审计日志统计失败: {e}")
+        return handle_database_error(e)
+
+
 # ==================== 系统健康检查 ====================
 
 @router.get("/health")
+@audit_admin_action(AuditService.ACTION_SYSTEM_HEALTH_CHECK, include_target=False)
 async def system_health_check(
     current_admin: User = Depends(require_admin)
 ):
     """系统健康检查"""
     try:
         from ..core.db_init import check_database_health
-        
+
         # 数据库健康检查
         db_health = await check_database_health()
-        
+
         # LLM 提供商健康检查
         llm_health = {}
         try:
             from ..llms.router import SmartModelRouter
             from pathlib import Path
-            
+
             router = SmartModelRouter.from_conf(Path("conf.yaml"))
             llm_health = router.health()
         except Exception as e:
             logger.error(f"LLM 健康检查失败: {e}")
             llm_health = {"error": str(e)}
-        
+
         # OCR 服务健康检查
         ocr_health = {}
         try:
@@ -734,7 +957,7 @@ async def system_health_check(
         except Exception as e:
             logger.error(f"OCR 健康检查失败: {e}")
             ocr_health = {"error": str(e)}
-        
+
         return {
             "status": "healthy" if db_health["healthy"] else "unhealthy",
             "timestamp": datetime.now().isoformat(),
@@ -744,7 +967,7 @@ async def system_health_check(
                 "ocr": ocr_health
             }
         }
-    
+
     except Exception as e:
         logger.error(f"系统健康检查失败: {e}")
         return handle_database_error(e)

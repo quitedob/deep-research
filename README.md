@@ -1,387 +1,425 @@
-# Deep Research Platform (深度研究平台)
+# Deep Research Platform
 
-<div align="center">
+An AI-powered research platform with intelligent routing, multi-modal support, and enterprise-grade security.
 
-![Platform Logo](https://img.shields.io/badge/Deep%20Research%20Platform-v1.0.0-blue)
-![Python](https://img.shields.io/badge/Python-3.8+-green)
-![Vue](https://img.shields.io/badge/Vue-3.3+-brightgreen)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-red)
-![License](https://img.shields.io/badge/License-MIT-yellow)
+## 🚀 Features
 
-**AI驱动的智能研究与文档生成平台**
+### Core Capabilities
+- **Intelligent LLM Routing**: Automatically selects the best model based on task type
+- **Multi-Provider Support**: DeepSeek, Doubao, Kimi, ZhipuAI, Ollama
+- **Agent-Based Research**: LangGraph-powered multi-agent workflows
+- **Document Processing**: Advanced PDF, DOCX, PPT analysis with OCR
+- **RAG System**: Two-stage retrieval with cross-encoder re-ranking
 
-[功能特性](#功能特性) • [快速开始](#快速开始) • [项目结构](#项目结构) • [配置说明](#配置说明) • [API文档](#api文档) • [部署指南](#部署指南)
+### Advanced Features
+- **🔍 Conversation Search**: Full-text search with filtering and relevance scoring
+- **🔗 Public Sharing**: Share conversations with customizable links
+- **👍 Feedback System**: User feedback collection for AI responses
+- **🛡️ Content Moderation**: Reporting and review workflow
+- **📊 System Monitoring**: Health checks and cost tracking
+- **🔒 Security Audit**: Comprehensive admin operation logging
 
-</div>
+## 📁 Project Structure
 
-## 📖 项目简介
+### Backend (`src/`)
 
-Deep Research Platform 是一个基于人工智能的综合性研究平台，集成了多模态AI模型、智能搜索、文档生成等功能。平台采用前后端分离架构，支持多种LLM提供商（豆包、DeepSeek、Kimi、Ollama等），提供智能对话、深度研究、PPT生成、OCR识别等核心功能。
+```
+src/
+├── agents/                          # AI Agent System
+│   ├── base_agent.py               # Base agent class
+│   ├── react_agent.py              # ReAct pattern implementation
+│   ├── research_agent.py           # Research workflow agent
+│   ├── task_decomposition.py       # Task decomposition logic
+│   └── prompt_templates.py         # Agent prompt templates
+├── api/                            # REST API Endpoints
+│   ├── auth.py                     # Authentication & authorization
+│   ├── admin.py                    # Admin management functions
+│   ├── feedback.py                 # User feedback collection
+│   ├── moderation.py               # Content moderation workflow
+│   ├── monitoring.py               # System health monitoring
+│   ├── conversation.py             # Chat management
+│   ├── billing.py                  # Payment integration
+│   ├── file_upload.py             # Document upload processing
+│   ├── llm_config.py              # LLM provider configuration
+│   └── deps.py                     # API dependencies
+├── config/                         # Configuration Management
+│   ├── config_loader.py            # Type-safe configuration system
+│   └── defensive_rules.txt         # Security guidelines
+├── core/                           # Core Business Logic
+│   ├── rag/                        # RAG (Retrieval-Augmented Generation)
+│   │   ├── reranker.py            # Two-stage retrieval with re-ranking
+│   │   └── ...                    # RAG components
+│   ├── db/                        # Database Layer
+│   │   └── ...                    # Database utilities
+│   └── ...                        # Core modules
+├── export/                         # Export Functionality
+│   ├── markdown.py                 # Markdown export
+│   ├── ppt.py                      # PPT generation
+│   ├── pptx.py                     # Enhanced PPT export
+│   ├── tts.py                      # Text-to-speech
+│   └── tts_edge.py                 # Edge TTS integration
+├── graph/                          # LangGraph Workflow System
+│   ├── agents.py                   # Graph agent definitions
+│   ├── builder.py                  # Workflow builder
+│   └── workflow/                   # Workflow implementations
+├── llms/                           # LLM Provider Layer
+│   ├── router.py                   # Intelligent model routing
+│   └── providers/                  # LLM provider implementations
+│       ├── deepseek_llm.py         # DeepSeek integration
+│       ├── doubao_llm.py           # Doubao integration
+│       ├── kimi_llm.py             # Kimi integration
+│       ├── ollama_llm.py           # Ollama local models
+│       └── zhipuai_llm.py          # ZhipuAI integration
+├── serve/                          # API Server
+│   ├── api.py                      # Main API routes
+│   ├── chat_stream.py              # Streaming chat endpoint
+│   ├── session_store.py            # Session management
+│   └── sanitizer.py                # Input sanitization
+├── services/                       # Service Layer
+│   ├── audit_service.py            # Admin audit logging
+│   └── unified_search.py           # Search service integration
+├── sqlmodel/                       # Database Models
+│   └── models.py                   # SQLAlchemy models
+├── tasks/                          # Task Processing
+│   ├── document_processor.py       # Document analysis
+│   └── ...                        # Task handlers
+└── tools/                          # Utility Tools
+    ├── code_exec.py                # Secure code execution
+    └── ...                        # Utility functions
+```
 
-### 🎯 核心价值
+### Frontend (`vue/src/`)
 
-- **智能路由系统**：根据任务类型自动选择最佳AI模型
-- **多模态支持**：文本、图像、语音等多种输入格式
-- **深度研究能力**：基于LangGraph的工作流引擎
-- **实时协作**：WebSocket流式响应，支持实时交互
-- **企业级安全**：JWT认证、配额管理、安全中间件
+```
+vue/src/
+├── components/                     # Vue Components
+│   ├── ChatContainer.vue           # Main chat interface
+│   ├── MessageItem.vue             # Chat message with feedback/sharing
+│   ├── DocumentManager.vue         # File upload & management
+│   ├── ResearchActivities.vue      # Research workflow UI
+│   ├── PublicConversation.vue      # Shared conversation viewer
+│   ├── Dashboard.vue               # Admin dashboard
+│   ├── ModelSelector.vue           # LLM model selection
+│   ├── EvidenceChain.vue           # Source evidence display
+│   ├── FileUpload.vue              # Drag-drop file upload
+│   ├── PPTGenerator.vue            # PPT generation interface
+│   ├── HistoryList.vue             # Conversation history
+│   └── ...                         # Additional components
+├── services/                       # API Services
+│   ├── api.js                      # API client configuration
+│   ├── ollama.js                   # Ollama service integration
+│   └── ...                         # Service modules
+├── views/                          # Page Views
+│   ├── Admin.vue                   # Admin interface
+│   ├── Chat.vue                    # Main chat page
+│   ├── Dashboard.vue               # User dashboard
+│   ├── Login.vue                   # Authentication
+│   ├── Register.vue                # User registration
+│   └── ...                         # Additional views
+├── assets/                         # Static Assets
+│   └── ...                         # Images, styles, etc.
+├── router/                         # Vue Router
+│   └── index.js                    # Route definitions
+├── stores/                         # State Management
+│   └── ...                         # Pinia stores
+├── App.vue                         # Root component
+└── main.js                         # Application entry point
+```
 
-## ✨ 功能特性
+## 🛠️ Technology Stack
 
-### 🤖 AI对话与推理
-- **智能聊天**：支持多轮对话，上下文记忆
-- **多模型支持**：DeepSeek、豆包、Kimi、Ollama本地模型
-- **智能路由**：根据任务复杂度自动选择最优模型
-- **代码生成**：支持多种编程语言的代码生成与解释
+### Backend
+- **FastAPI**: High-performance async web framework
+- **SQLAlchemy**: ORM with async support
+- **PostgreSQL**: Primary database with pgvector
+- **Redis**: Caching and session storage
+- **LangGraph**: Agent workflow orchestration
+- **Pydantic**: Type-safe configuration and validation
 
-### 🔍 智能搜索与检索
-- **联网搜索**：集成多个搜索引擎，实时获取最新信息
-- **RAG知识库**：基于向量数据库的文档检索与问答
-- **融合检索**：结合多种搜索引擎，提高搜索准确性
-- **文档理解**：支持PDF、Word、PPT等多种文档格式
+### Frontend
+- **Vue.js 3**: Modern frontend framework
+- **Vite**: Fast build tool
+- **Pinia**: State management
+- **Vue Router**: Client-side routing
+- **TailwindCSS**: Utility-first CSS framework
 
-### 📊 文档生成与处理
-- **智能PPT生成**：基于研究内容自动生成专业演示文稿
-- **研究报告**：生成结构化的深度研究报告
-- **OCR识别**：高精度图像文字识别
-- **多格式导出**：支持Markdown、PDF、Word等格式
+### AI/ML Integration
+- **OpenAI SDK**: LLM API integration
+- **Multiple Providers**: DeepSeek, Doubao, Kimi, ZhipuAI, Ollama
+- **RAG Pipeline**: Advanced retrieval system
+- **Vector Search**: Semantic document retrieval
 
-### 👥 用户管理
-- **用户认证**：JWT令牌认证，安全的用户会话管理
-- **配额管理**：灵活的使用配额控制系统
-- **订阅服务**：集成Stripe支付系统
-- **权限控制**：基于角色的访问控制
+## 🚀 Quick Start
 
-## 🚀 快速开始
+### Prerequisites
+- Python 3.9+
+- Node.js 16+
+- PostgreSQL 13+
+- Redis 6+
 
-### 环境要求
+### Backend Setup
 
-- **Python**: 3.8+
-- **Node.js**: 16+
-- **PostgreSQL**: 12+ (可选，SQLite也可用)
-- **Redis**: 6+ (可选，用于缓存和任务队列)
-
-### 1. 克隆项目
-
+1. **Clone and Install Dependencies**
 ```bash
-git clone https://github.com/quitedob/deep-research.git
+git clone <repository-url>
 cd deep-research
-```
-
-### 2. 后端设置
-
-```bash
-# 创建虚拟环境
-python -m venv venv
-
-# 激活虚拟环境
-# Windows
-venv\Scripts\activate
-# Linux/macOS
-source venv/bin/activate
-
-# 安装依赖
 pip install -r requirements.txt
-
-# 配置环境变量
-cp .env.example .env
-# 编辑 .env 文件，配置API密钥和数据库连接
 ```
 
-### 3. 前端设置
+2. **Environment Configuration**
+```bash
+cp .env.example .env
+# Edit .env with your API keys and configuration
+```
 
+3. **Database Setup**
+```bash
+# PostgreSQL database setup
+createdb deerflow
+
+# Tables are created automatically with AUTO_CREATE_TABLES=true
+```
+
+4. **Start Backend Server**
+```bash
+python app.py
+```
+
+### Frontend Setup
+
+1. **Install Dependencies**
 ```bash
 cd vue
-
-# 安装依赖
 npm install
+```
 
-# 启动开发服务器
+2. **Start Development Server**
+```bash
 npm run dev
 ```
 
-### 4. 启动服务
+## 🔧 Configuration
+
+### Environment Variables
+
+Key environment variables (see `.env.example` for complete list):
 
 ```bash
-# 启动后端服务 (项目根目录)
-python app.py
+# Security (Required)
+DEEP_RESEARCH_SECURITY_SECRET_KEY=your-secret-key-here
 
-# 前端服务默认运行在 http://localhost:3000
-# 后端API服务默认运行在 http://localhost:8000
+# LLM Providers (Configure as needed)
+DEEP_RESEARCH_DEEPSEEK_API_KEY=sk-your-deepseek-key
+DEEP_RESEARCH_DOUBAO_API_KEY=your-doubao-key
+DEEP_RESEARCH_KIMI_API_KEY=sk-your-kimi-key
+DEEP_RESEARCH_ZHIPUAI_API_KEY=your-zhipuai-key
+
+# Database
+DEEP_RESEARCH_DATABASE_URL=postgresql+asyncpg://user:pass@localhost/db
+
+# Redis
+DEEP_RESEARCH_REDIS_URL=redis://localhost:6379
 ```
 
-### 5. 首次访问
+### Model Configuration
 
-1. 打开浏览器访问 `http://localhost:3000`
-2. 注册新用户或使用管理员账户登录
-3. 在设置中配置您的AI模型API密钥
-4. 开始使用平台的各种功能
+The platform uses intelligent routing to automatically select the best model:
 
-## 📁 项目结构
+- **Code Tasks**: DeepSeek (strongest reasoning)
+- **Research**: ZhipuAI (with web search)
+- **General Chat**: Ollama (local, cost-effective)
+- **Vision Tasks**: ZhipuAI or Doubao (multi-modal support)
 
-```
-deep-research/
-├── app.py                          # FastAPI应用入口
-├── requirements.txt                # Python依赖包
-├── conf.yaml                       # 主配置文件
-├── .env.example                    # 环境变量示例
-├── src/                            # 后端源代码
-│   ├── api/                        # API路由
-│   │   ├── admin.py               # 管理员API
-│   │   ├── agents.py              # 智能体管理
-│   │   ├── auth.py                # 用户认证
-│   │   ├── conversation.py        # 对话管理
-│   │   ├── llm_provider.py        # LLM提供商
-│   │   ├── rag.py                 # RAG检索
-│   │   └── ...
-│   ├── agents/                     # AI智能体
-│   │   ├── base_agent.py          # 智能体基类
-│   │   ├── research_agent.py      # 研究智能体
-│   │   └── ...
-│   ├── core/                       # 核心功能
-│   │   ├── db.py                  # 数据库连接
-│   │   ├── cache.py               # 缓存管理
-│   │   └── ppt/                   # PPT生成模块
-│   ├── llms/                       # LLM集成
-│   │   ├── base_llm.py            # LLM基类
-│   │   └── providers/             # 各LLM提供商
-│   │       ├── deepseek_llm.py    # DeepSeek集成
-│   │       ├── doubao_llm.py      # 豆包集成
-│   │       └── ollama_llm.py      # Ollama集成
-│   ├── middleware/                 # 中间件
-│   ├── services/                   # 业务服务
-│   └── sqlmodel/                   # 数据模型
-├── vue/                            # 前端源代码
-│   ├── src/
-│   │   ├── components/            # Vue组件
-│   │   │   ├── ChatContainer.vue  # 聊天容器
-│   │   │   ├── InputBox.vue       # 输入框
-│   │   │   ├── Sidebar.vue        # 侧边栏
-│   │   │   └── ...
-│   │   ├── views/                 # 页面视图
-│   │   │   ├── Home.vue           # 主页
-│   │   │   ├── Admin.vue          # 管理页面
-│   │   │   └── ...
-│   │   ├── services/              # API服务
-│   │   └── store/                 # 状态管理
-│   ├── package.json               # 前端依赖
-│   └── vite.config.js             # Vite配置
-├── uploads/                       # 文件上传目录
-├── outputs/                       # 输出文件目录
-└── logs/                          # 日志文件目录
-```
+## 📊 API Documentation
 
-## ⚙️ 配置说明
+### Core Endpoints
 
-### 主配置文件 (conf.yaml)
+#### Authentication
+- `POST /api/auth/login` - User login
+- `POST /api/auth/register` - User registration
+- `GET /api/auth/me` - Get current user
 
-配置文件采用YAML格式，支持环境变量替换：
+#### Chat & Research
+- `POST /api/chat` - Simple chat
+- `POST /api/llm/chat` - Advanced chat with routing
+- `POST /api/research` - Multi-agent research workflow
 
-```yaml
-# LLM后端配置
-PRIMARY_LLM_BACKEND: "DOUBAO"
-FALLBACK_LLM_BACKEND: "KIMI"
+#### Features
+- `POST /api/search/conversations` - Search conversation history
+- `POST /api/share/conversation` - Create share link
+- `GET /api/public/conversation/{id}` - View shared conversation
+- `POST /api/feedback/submit` - Submit feedback
+- `POST /api/moderation/report` - Report content
 
-# 数据库配置
-DATABASE_URL: "${DATABASE_URL:postgresql+asyncpg://user:pass@localhost/db}"
+#### Admin
+- `GET /api/admin/audit-logs` - Admin audit trail
+- `GET /api/monitoring/health` - System health
+- `GET /api/moderation/admin/queue` - Content moderation queue
 
-# API密钥 (通过环境变量设置)
-# DEEPSEEK_API_KEY: "your-deepseek-api-key"
-# DOUBAO_API_KEY: "your-doubao-api-key"
-```
+## 🔒 Security Features
 
-### 环境变量
+### Authentication & Authorization
+- JWT-based authentication
+- Role-based access control (RBAC)
+- API rate limiting and quotas
 
-创建 `.env` 文件配置敏感信息：
+### Content Safety
+- Input validation and sanitization
+- Content moderation workflow
+- User reporting system
 
+### Audit & Compliance
+- Comprehensive admin operation logging
+- Security event tracking
+- Compliance-ready audit trails
+
+## 🤖 AI Agent System
+
+### Agent Types
+- **Research Agent**: Multi-step research workflow
+- **Triage Agent**: Task classification and routing
+- **User Agent**: User intent analysis
+
+### Workflow Features
+- Dynamic plan generation
+- Reflection and quality assessment
+- Multi-agent collaboration
+- Human-in-the-loop feedback
+
+## 📈 Monitoring & Analytics
+
+### System Health
+- Real-time health checks
+- Performance metrics
+- Error tracking and alerts
+
+### Usage Analytics
+- Token usage tracking
+- Cost analysis
+- Provider performance comparison
+
+### User Analytics
+- Feedback analysis
+- Search patterns
+- Feature usage statistics
+
+## 🚀 Deployment
+
+### Production Deployment
+
+1. **Environment Preparation**
 ```bash
-# 数据库连接
-DATABASE_URL=postgresql+asyncpg://username:password@localhost:5432/deep_research
+# Set production environment
+export DEEP_RESEARCH_ENVIRONMENT=production
+export DEEP_RESEARCH_DEBUG=false
 
-# Redis连接 (可选)
-REDIS_URL=redis://localhost:6379
-
-# JWT密钥
-SECRET_KEY=your-super-secret-jwt-key
-JWT_SECRET_KEY=your-jwt-secret-key
-
-# AI服务API密钥
-DEEPSEEK_API_KEY=your-deepseek-api-key
-DOUBAO_API_KEY=your-doubao-api-key
-KIMI_API_KEY=your-kimi-api-key
-
-# Stripe支付 (可选)
-STRIPE_SECRET_KEY=your-stripe-secret-key
-STRIPE_WEBHOOK_SECRET=your-stripe-webhook-secret
+# Configure production database
+export DEEP_RESEARCH_DATABASE_URL=postgresql+asyncpg://prod_user:pass@prod_host/prod_db
 ```
 
-### LLM提供商配置
-
-#### DeepSeek
-```yaml
-DEEPSEEK_BASE_URL: "https://api.deepseek.com/v1"
-DEEPSEEK_MODELS:
-  chat: "deepseek-chat"
-  reasoner: "deepseek-reasoner"
-```
-
-#### 豆包 (Doubao)
-```yaml
-DOUBAO_BASE_URL: "https://ark.cn-beijing.volces.com/api/v3"
-DOUBAO_MODEL: "doubao-seed-1-6-flash-250615"
-```
-
-#### Ollama (本地)
-```yaml
-OLLAMA_BASE_URL: "http://localhost:11434/v1"
-OLLAMA_SMALL_MODEL: "gemma3:4b"
-OLLAMA_LARGE_MODEL: "qwen3:32b"
-```
-
-## 🔧 API文档
-
-### 认证API
-
-```http
-POST /api/auth/register
-POST /api/auth/login
-POST /api/auth/refresh
-```
-
-### 对话API
-
-```http
-POST /api/conversation/chat      # 发送消息
-GET  /api/conversation/history   # 获取历史记录
-DELETE /api/conversation/{id}    # 删除对话
-```
-
-### 研究API
-
-```http
-POST /api/research/start         # 开始研究
-GET  /api/research/status/{id}   # 获取研究状态
-GET  /api/research/report/{id}   # 获取研究报告
-```
-
-### PPT生成API
-
-```http
-POST /api/ppt/generate           # 生成PPT
-GET  /api/ppt/status/{id}        # 获取生成状态
-GET  /api/ppt/download/{id}      # 下载PPT
-```
-
-### 完整API文档
-
-启动服务后访问：`http://localhost:8000/docs`
-
-## 🚀 部署指南
-
-### Docker部署
-
+2. **Build Frontend**
 ```bash
-# 构建镜像
-docker build -t deep-research .
-
-# 运行容器
-docker run -p 8000:8000 deep-research
-```
-
-### 生产环境部署
-
-1. **使用Gunicorn**：
-```bash
-pip install gunicorn
-gunicorn app:app -w 4 -k uvicorn.workers.UvicornWorker
-```
-
-2. **使用Nginx反向代理**：
-```nginx
-server {
-    listen 80;
-    server_name your-domain.com;
-
-    location /api {
-        proxy_pass http://localhost:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-
-    location / {
-        root /path/to/vue/dist;
-        try_files $uri $uri/ /index.html;
-    }
-}
-```
-
-3. **使用PM2管理进程**：
-```bash
-npm install -g pm2
-pm2 start ecosystem.config.js
-```
-
-## 🛠️ 开发指南
-
-### 添加新的LLM提供商
-
-1. 在 `src/llms/providers/` 目录下创建新的提供商文件
-2. 继承 `BaseLLM` 类并实现必要方法
-3. 在配置文件中添加相应配置
-4. 在路由中注册新的提供商
-
-### 创建新的工作流
-
-1. 在 `src/graph/workflow/` 目录下创建工作流文件
-2. 使用LangGraph定义工作流节点和边
-3. 在 `src/graph/builder.py` 中注册工作流
-
-### 前端开发
-
-```bash
-# 开发模式
-npm run dev
-
-# 构建生产版本
+cd vue
 npm run build
+```
 
-# 代码检查
+3. **Run Backend**
+```bash
+# Use production server
+uvicorn app:app --host 0.0.0.0 --port 8000 --workers 4
+```
+
+### Docker Deployment
+
+```dockerfile
+# Dockerfile example
+FROM python:3.11-slim
+
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+COPY . .
+EXPOSE 8000
+
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+## 🧪 Testing
+
+### Backend Tests
+```bash
+# Run all tests
+pytest test/
+
+# Run specific test file
+pytest test/test_llm.py
+
+# Run with coverage
+pytest --cov=src test/
+```
+
+### Frontend Tests
+```bash
+cd vue
+npm run test
 npm run lint
 ```
 
-## 🤝 贡献指南
+## 📝 Development Guide
 
-1. Fork 项目
-2. 创建功能分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 创建 Pull Request
+### Code Style
+- **Backend**: Black, isort, flake8
+- **Frontend**: ESLint, Prettier
+- **Type Hints**: Required for all Python functions
 
-## 📝 许可证
+### Adding New LLM Providers
+1. Create provider in `src/llms/providers/`
+2. Add capability definition in `src/llms/router.py`
+3. Update configuration in `conf.yaml`
+4. Add tests in `test/`
 
-本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情
+### Adding New Agent Workflows
+1. Define workflow in `src/graph/workflow/`
+2. Register in `src/graph/builder.py`
+3. Add configuration to `conf.yaml`
+4. Create UI components if needed
 
-## 🙏 致谢
+## 🤝 Contributing
 
-- [FastAPI](https://fastapi.tiangolo.com/) - 现代化的Python Web框架
-- [Vue.js](https://vuejs.org/) - 渐进式JavaScript框架
-- [LangGraph](https://python.langchain.com/docs/langgraph) - 构建有状态的AI应用
-- [DeepSeek](https://www.deepseek.com/) - 强大的AI推理模型
-- [Ollama](https://ollama.com/) - 本地LLM运行环境
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests for new functionality
+5. Ensure all tests pass
+6. Submit a pull request
 
-## 📞 支持
+## 📄 License
 
-- 📧 Email: support@deep-research.com
-- 💬 Discord: [加入社区](https://discord.gg/deep-research)
-- 📖 文档: [在线文档](https://docs.deep-research.com)
-- 🐛 问题反馈: [GitHub Issues](https://github.com/quitedob/deep-research/issues)
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## 🆘 Support
+
+- **Documentation**: See `/docs` directory
+- **Issues**: Create an issue on GitHub
+- **Discussions**: Join our community discussions
+
+## 🗺️ Roadmap
+
+### Upcoming Features
+- [ ] Advanced analytics dashboard
+- [ ] Multi-language support
+- [ ] Plugin system
+- [ ] Advanced RAG features
+- [ ] Real-time collaboration
+- [ ] Mobile applications
+
+### Current Focus
+- Performance optimization
+- Enhanced security features
+- Improved user experience
+- Extended provider support
 
 ---
 
-<div align="center">
-
-**⭐ 如果这个项目对您有帮助，请给我们一个Star！**
-
-Made with ❤️ by Deep Research Team
-
-</div>
+**Built with ❤️ by the Deep Research Platform team**
