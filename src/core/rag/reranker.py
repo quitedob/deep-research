@@ -324,3 +324,72 @@ class TwoStageRAGRetriever:
             "min_score_threshold": self.min_score_threshold,
             "reranker_model": self.reranker.model_name if self.reranker.model else "simple"
         }
+
+
+# 全局重排序器实例
+_default_reranker = None
+
+
+def get_default_reranker() -> CrossEncoderReranker:
+    """
+    获取默认重排序器实例
+
+    Returns:
+        CrossEncoderReranker 实例
+    """
+    global _default_reranker
+
+    if _default_reranker is None:
+        _default_reranker = CrossEncoderReranker()
+
+    return _default_reranker
+
+
+async def rerank_documents(
+    query: str,
+    documents: List[Dict[str, Any]],
+    top_k: int = 5,
+    batch_size: int = 16
+) -> List[Dict[str, Any]]:
+    """
+    重排序文档的主入口函数
+
+    Args:
+        query: 查询字符串
+        documents: 文档列表，每个文档包含 content 和 metadata
+        top_k: 返回的文档数量
+        batch_size: 批处理大小
+
+    Returns:
+        重排序后的文档列表
+    """
+    reranker = get_default_reranker()
+
+    try:
+        # 使用重排序器进行重排序
+        reranked_docs = await reranker.rerank(
+            query=query,
+            documents=documents,
+            top_k=top_k,
+            batch_size=batch_size
+        )
+
+        # 转换为字典格式
+        result = []
+        for doc_score in reranked_docs:
+            doc_dict = {
+                'id': doc_score.document_id,
+                'content': doc_score.content,
+                'metadata': doc_score.metadata,
+                'score': doc_score.final_score,
+                'rerank_score': doc_score.rerank_score,
+                'recall_score': doc_score.recall_score
+            }
+            result.append(doc_dict)
+
+        return result
+
+    except Exception as e:
+        logger.error(f"文档重排序失败: {e}")
+        # 返回原始文档列表
+        return documents[:top_k]

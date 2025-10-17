@@ -35,8 +35,8 @@ class MockEmbeddingService:
 async def test_pgvector_basic_functionality():
     """测试 pgvector 基本功能"""
     try:
-        from src.rag.pgvector_store import PgVectorStore
-        from src.rag.vector_store import Document as VectorDocument
+        from src.core.rag.pgvector_store import PgVectorStore
+        from src.core.rag.vector_store import Document as VectorDocument
         
         # 创建测试实例
         store = PgVectorStore()
@@ -142,12 +142,12 @@ async def test_pgvector_basic_functionality():
 async def test_retrieval_service_integration():
     """测试检索服务集成"""
     try:
-        from src.rag.retrieval import get_retrieval_service, RetrievalStrategy
+        from src.core.rag.retrieval import get_retriever, RetrievalStrategy
         
         print("开始测试检索服务集成...")
         
         # 获取检索服务
-        service = get_retrieval_service()
+        service = get_retriever()
         
         # 测试搜索（会自动尝试 pgvector，失败则回退到内存存储）
         results = await service.search_documents(

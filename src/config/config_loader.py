@@ -11,7 +11,7 @@ import logging
 import secrets
 from pathlib import Path
 from typing import Any, Dict, Optional, Type, Union, List, get_type_hints
-from pydantic import BaseModel, Field, validator, root_validator
+from pydantic import BaseModel, Field, validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import re
 
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 class DatabaseConfig(BaseModel):
     """数据库配置"""
     url: str = Field(
-        default="postgresql+asyncpg://deerflow:deerflow123@localhost:5432/deerflow",
+        default="postgresql+asyncpg://postgres:1234@localhost:5432/deep_research",
         description="数据库连接URL"
     )
     echo: bool = Field(default=False, description="SQLAlchemy echo模式")
@@ -107,6 +107,7 @@ class LLMProviderConfig(BaseModel):
 
 class OllamaConfig(LLMProviderConfig):
     """Ollama配置"""
+    model: str = Field(default="qwen3:7b", description="默认模型")
     small_model: str = Field(default="gemma3:4b", description="小型模型")
     large_model: str = Field(default="qwen3:32b", description="大型模型")
     vision_model: str = Field(default="qwen2.5vl:7b", description="视觉模型")
@@ -117,6 +118,7 @@ class OllamaConfig(LLMProviderConfig):
 
 class DeepSeekConfig(LLMProviderConfig):
     """DeepSeek配置"""
+    model: str = Field(default="deepseek-chat", description="默认模型")
     base_url: str = Field(default="https://api.deepseek.com/v1", description="DeepSeek API基础URL")
     models: Dict[str, str] = Field(
         default_factory=lambda: {"chat": "deepseek-chat", "reasoner": "deepseek-reasoner"},
@@ -145,6 +147,7 @@ class KimiConfig(LLMProviderConfig):
 
 class ZhipuAIConfig(LLMProviderConfig):
     """ZhipuAI配置"""
+    model: str = Field(default="glm-4.5-air", description="默认模型")
     base_url: str = Field(default="https://open.bigmodel.cn/api/paas/v4", description="智谱AI API基础URL")
     models: Dict[str, str] = Field(
         default_factory=lambda: {
@@ -223,9 +226,12 @@ class AppSettings(BaseSettings):
 
     # 数据库配置
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
+    database_url: str = Field(default="postgresql+asyncpg://postgres:1234@localhost:5432/deep_research", description="数据库连接URL")
+    auto_create_tables: bool = Field(default=True, description="自动创建表")
 
     # Redis配置
     redis: RedisConfig = Field(default_factory=RedisConfig)
+    redis_url: str = Field(default="redis://localhost:6379", description="Redis连接URL")
 
     # 安全配置
     security: SecurityConfig = Field(default_factory=SecurityConfig)
@@ -236,6 +242,7 @@ class AppSettings(BaseSettings):
     # LLM配置
     primary_llm_backend: str = Field(default="DOUBAO", description="主要LLM后端")
     default_search_provider: str = Field(default="doubao", description="默认搜索提供商")
+    llm_provider: str = Field(default="doubao", description="LLM提供商")
 
     # Ollama配置
     ollama: OllamaConfig = Field(default_factory=OllamaConfig)
@@ -395,15 +402,15 @@ class AppSettings(BaseSettings):
 
         # 配置验证
         validate_all = True
-        extra = "forbid"
+        extra = "allow"  # 允许额外的环境变量
 
-    @root_validator
-    def validate_config(cls, values):
+    @model_validator(mode='after')
+    def validate_config(self):
         """验证配置一致性"""
         # 检查冲突的配置
-        if values.primary_llm_backend and values.llm_routing:
-            primary_backend = values.primary_llm_backend.lower()
-            priority_map = values.llm_routing.provider_priority
+        if self.primary_llm_backend and self.llm_routing:
+            primary_backend = self.primary_llm_backend.lower()
+            priority_map = self.llm_routing.provider_priority
 
             # 检查主要后端是否在优先级列表中
             for task_type, providers in priority_map.items():
@@ -415,19 +422,19 @@ class AppSettings(BaseSettings):
                     )
 
         # 统一密钥验证已在 SecurityConfig 中处理
-        if hasattr(values.security, 'secret_key'):
-            secret_key = values.security.secret_key
+        if hasattr(self.security, 'secret_key'):
+            secret_key = self.security.secret_key
             if secret_key and any(weak_key in secret_key.lower() for weak_key in
                                 ["your_", "secret", "key", "change", "random"]):
                 logger.warning("检测到潜在弱密钥，建议在生产环境中使用强密钥")
 
-        return values
+        return self
 
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = False
-        extra = "forbid"
+        extra = "allow"  # 允许额外的环境变量
 
     def get(self, key: str, default: Any = None) -> Any:
         """获取配置值（支持点号分隔的嵌套键）"""
@@ -456,325 +463,6 @@ class AppSettings(BaseSettings):
             return value
         except (AttributeError, TypeError):
             return default
-    
-    def get(self, key: str, default: Any = None) -> Any:
-        """
-        获取配置值（支持点号分隔的嵌套键）
-        
-        Args:
-            key: 配置键，支持 "WORKFLOWS.ppt.output_dir" 格式
-            default: 默认值
-        
-        Returns:
-            配置值
-        """
-        keys = key.split('.')
-        value = self._config
-        
-        for k in keys:
-            if isinstance(value, dict) and k in value:
-                value = value[k]
-            else:
-                return default
-        
-        return value
-    
-    def get_all(self) -> Dict[str, Any]:
-        """获取所有配置"""
-        return self._config.copy()
-    
-    # 便捷属性访问
-    @property
-    def app_name(self) -> str:
-        return self.get('APP_NAME', 'Deep Research Platform')
-    
-    @property
-    def app_version(self) -> str:
-        return self.get('APP_VERSION', '1.0.0')
-    
-    @property
-    def environment(self) -> str:
-        return self.get('ENVIRONMENT', 'development')
-    
-    @property
-    def debug(self) -> bool:
-        return self.get('DEBUG', True)
-    
-    @property
-    def host(self) -> str:
-        return self.get('HOST', '0.0.0.0')
-    
-    @property
-    def port(self) -> int:
-        return self.get('PORT', 8000)
-    
-    @property
-    def enable_reload(self) -> bool:
-        return self.get('ENABLE_RELOAD', True)
-    
-    # 数据库配置
-    @property
-    def database_url(self) -> str:
-        return self.get('DATABASE_URL', 'postgresql+asyncpg://deerflow:deerflow123@localhost:5432/deerflow')
-    
-    @property
-    def auto_create_tables(self) -> bool:
-        return self.get('AUTO_CREATE_TABLES', True)
-    
-    # Redis 配置
-    @property
-    def redis_url(self) -> str:
-        return self.get('REDIS_URL', 'redis://localhost:6379')
-    
-    # JWT 配置
-    @property
-    def secret_key(self) -> str:
-        return self.get('SECRET_KEY', 'your_super_secret_jwt_key_here')
-    
-    @property
-    def algorithm(self) -> str:
-        return self.get('ALGORITHM', 'HS256')
-    
-    @property
-    def access_token_expire_minutes(self) -> int:
-        return self.get('ACCESS_TOKEN_EXPIRE_MINUTES', 30)
-    
-    # Stripe 配置
-    @property
-    def stripe_secret_key(self) -> str:
-        return self.get('STRIPE_SECRET_KEY', '')
-    
-    @property
-    def stripe_webhook_secret(self) -> str:
-        return self.get('STRIPE_WEBHOOK_SECRET', '')
-    
-    @property
-    def stripe_price_id(self) -> str:
-        return self.get('STRIPE_PRICE_ID', '')
-    
-    @property
-    def frontend_url(self) -> str:
-        return self.get('FRONTEND_URL', 'http://localhost:3000')
-    
-    # 配额配置
-    @property
-    def free_tier_lifetime_limit(self) -> int:
-        return self.get('FREE_TIER_LIFETIME_LIMIT', 5)
-    
-    @property
-    def subscribed_tier_hourly_limit(self) -> int:
-        return self.get('SUBSCRIBED_TIER_HOURLY_LIMIT', 5)
-    
-    @property
-    def quota_window_size(self) -> int:
-        return self.get('QUOTA_WINDOW_SIZE', 3600)
-    
-    # 文件上传配置
-    @property
-    def max_file_size(self) -> int:
-        return self.get('MAX_FILE_SIZE', 10485760)
-    
-    @property
-    def allowed_file_types(self) -> str:
-        return self.get('ALLOWED_FILE_TYPES', '.docx,.doc,.txt,.md,.pdf,.ppt,.pptx')
-    
-    @property
-    def upload_dir(self) -> str:
-        return self.get('UPLOAD_DIR', './uploads')
-    
-    @property
-    def temp_dir(self) -> str:
-        return self.get('TEMP_DIR', './temp')
-    
-    # RAG 配置
-    @property
-    def rag_index_path(self) -> str:
-        return self.get('RAG_INDEX_PATH', './data/rag_documents')
-    
-    @property
-    def vector_store_path(self) -> str:
-        return self.get('VECTOR_STORE_PATH', './data/vector_store')
-    
-    @property
-    def vector_dimension(self) -> int:
-        return self.get('VECTOR_DIMENSION', 1536)
-    
-    # 任务队列配置
-    @property
-    def task_queue_type(self) -> str:
-        return self.get('TASK_QUEUE_TYPE', 'redis')
-    
-    @property
-    def task_queue_url(self) -> str:
-        return self.get('TASK_QUEUE_URL', 'redis://localhost:6379')
-    
-    @property
-    def max_workers(self) -> int:
-        return self.get('MAX_WORKERS', 4)
-    
-    @property
-    def max_concurrent_requests(self) -> int:
-        return self.get('MAX_CONCURRENT_REQUESTS', 10)
-    
-    @property
-    def request_timeout(self) -> int:
-        return self.get('REQUEST_TIMEOUT', 300)
-    
-    # 缓存配置
-    @property
-    def enable_caching(self) -> bool:
-        return self.get('ENABLE_CACHING', True)
-    
-    @property
-    def cache_ttl(self) -> int:
-        return self.get('CACHE_TTL', 1800)
-    
-    # 日志配置
-    @property
-    def log_level(self) -> str:
-        return self.get('LOG_LEVEL', 'INFO')
-    
-    @property
-    def enable_request_logging(self) -> bool:
-        return self.get('ENABLE_REQUEST_LOGGING', True)
-    
-    # CORS 配置
-    @property
-    def cors_allow_origins(self) -> list:
-        origins_str = self.get('CORS_ALLOW_ORIGINS', 'http://localhost:3000,http://localhost:8080')
-        return [origin.strip() for origin in origins_str.split(',') if origin.strip()]
-    
-    @property
-    def cors_allow_credentials(self) -> bool:
-        return self.get('CORS_ALLOW_CREDENTIALS', True)
-    
-    # LLM 配置
-    @property
-    def primary_llm_backend(self) -> str:
-        return self.get('PRIMARY_LLM_BACKEND', 'DOUBAO')
-    
-    @property
-    def fallback_llm_backend(self) -> str:
-        return self.get('FALLBACK_LLM_BACKEND', 'KIMI')
-    
-    @property
-    def default_search_provider(self) -> str:
-        return self.get('DEFAULT_SEARCH_PROVIDER', 'doubao')
-    
-    # Ollama 配置
-    @property
-    def ollama_base_url(self) -> str:
-        return self.get('OLLAMA_BASE_URL', 'http://localhost:11434')
-    
-    @property
-    def ollama_small_model(self) -> str:
-        return self.get('OLLAMA_SMALL_MODEL', 'gemma3:4b')
-    
-    @property
-    def ollama_large_model(self) -> str:
-        return self.get('OLLAMA_LARGE_MODEL', 'qwen3:32b')
-    
-    @property
-    def ollama_vision_model(self) -> str:
-        return self.get('OLLAMA_VISION_MODEL', 'qwen2.5vl:7b')
-    
-    # DeepSeek 配置
-    @property
-    def deepseek_api_key(self) -> str:
-        return os.getenv('DEEPSEEK_API_KEY', '')
-    
-    @property
-    def deepseek_base_url(self) -> str:
-        return self.get('DEEPSEEK_BASE_URL', 'https://api.deepseek.com/v1')
-    
-    # Doubao 配置
-    @property
-    def doubao_api_key(self) -> str:
-        return os.getenv('DOUBAO_API_KEY', '')
-    
-    @property
-    def doubao_base_url(self) -> str:
-        return self.get('DOUBAO_BASE_URL', 'https://ark.cn-beijing.volces.com/api/v3')
-    
-    @property
-    def doubao_model(self) -> str:
-        return self.get('DOUBAO_MODEL', 'doubao-seed-1-6-flash-250615')
-    
-    @property
-    def doubao_vision_model(self) -> str:
-        return self.get('DOUBAO_VISION_MODEL', 'doubao-1-5-vision-pro-250328')
-    
-    # Kimi 配置
-    @property
-    def kimi_api_key(self) -> str:
-        return os.getenv('KIMI_API_KEY', '') or os.getenv('MOONSHOT_API_KEY', '')
-    
-    @property
-    def kimi_base_url(self) -> str:
-        return self.get('KIMI_BASE_URL', 'https://api.moonshot.cn/v1')
-    
-    @property
-    def kimi_model(self) -> str:
-        return self.get('KIMI_MODEL', 'moonshot-v1-8k')
-
-    # ZhipuAI配置
-    @property
-    def zhipuai_api_key(self) -> str:
-        return os.getenv('ZHIPUAI_API_KEY', '')
-
-    @property
-    def zhipuai_base_url(self) -> str:
-        return self.get('ZHIPUAI_BASE_URL', 'https://open.bigmodel.cn/api/paas/v4')
-
-    @property
-    def zhipuai_chat_model(self) -> str:
-        return self.get('ZHIPUAI_MODELS', {}).get('chat', 'glm-4.5-air')
-
-    @property
-    def zhipuai_free_model(self) -> str:
-        return self.get('ZHIPUAI_MODELS', {}).get('free', 'glm-4.5-flash')
-
-    @property
-    def zhipuai_premium_model(self) -> str:
-        return self.get('ZHIPUAI_MODELS', {}).get('premium', 'glm-4.6')
-
-    @property
-    def zhipuai_cost_effective_model(self) -> str:
-        return self.get('ZHIPUAI_MODELS', {}).get('cost_effective', 'glm-4.5-air')
-
-    @property
-    def zhipuai_reasoning_model(self) -> str:
-        return self.get('ZHIPUAI_MODELS', {}).get('reasoning', 'glm-4.6')
-
-    @property
-    def zhipuai_vision_model(self) -> str:
-        return self.get('ZHIPUAI_MODELS', {}).get('vision', 'glm-4.1v-thinking-flash')
-
-    @property
-    def zhipuai_search_model(self) -> str:
-        return self.get('ZHIPUAI_MODELS', {}).get('search', 'glm-4.5-flash')
-
-    # 对话记忆配置
-    @property
-    def enable_conversation_memory(self) -> bool:
-        return self.get('ENABLE_CONVERSATION_MEMORY', True)
-
-    @property
-    def memory_max_tokens(self) -> int:
-        return self.get('MEMORY_MAX_TOKENS', 4000)
-
-    @property
-    def memory_ttl_hours(self) -> int:
-        return self.get('MEMORY_TTL_HOURS', 24)
-
-    # OCR 配置
-    @property
-    def ocr_provider(self) -> str:
-        return self.get('OCR_PROVIDER', 'doubao')
-
-    @property
-    def ocr_model(self) -> str:
-        return self.get('OCR_MODEL', 'doubao-seed-1-6-flash-250615')
 
 
 class ConfigLoader:
@@ -814,7 +502,7 @@ class ConfigLoader:
             "HOST": "0.0.0.0",
             "PORT": 8000,
             "ENABLE_RELOAD": True,
-            "DATABASE_URL": "postgresql+asyncpg://deerflow:deerflow123@localhost:5432/deerflow",
+            "DATABASE_URL": "postgresql+asyncpg://postgres:1234@localhost:5432/deep_research",
             "AUTO_CREATE_TABLES": True,
             "REDIS_URL": "redis://localhost:6379",
             "SECRET_KEY": "your_super_secret_jwt_key_here_make_it_long_and_random",
@@ -994,6 +682,7 @@ class ConfigLoader:
 
 # 全局配置实例
 _config: Optional[ConfigLoader] = None
+_settings: Optional[AppSettings] = None
 
 
 def get_config() -> ConfigLoader:
@@ -1004,7 +693,9 @@ def get_config() -> ConfigLoader:
     return _config
 
 
-# 向后兼容：提供 get_settings 别名
-def get_settings() -> ConfigLoader:
-    """向后兼容的函数名"""
-    return get_config()
+def get_settings() -> AppSettings:
+    """获取AppSettings实例（单例模式）"""
+    global _settings
+    if _settings is None:
+        _settings = AppSettings()
+    return _settings

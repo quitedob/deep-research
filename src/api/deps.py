@@ -24,6 +24,13 @@ async def require_auth(token: str = Depends(oauth2_scheme)) -> dict:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid token")
 
 
+async def require_admin(claims: dict = Depends(require_auth)) -> dict:
+    """管理员权限验证"""
+    if claims.get("role") != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="admin access required")
+    return claims
+
+
 def require_quota(endpoint_tag: str):
     async def _inner(claims: dict = Depends(require_auth), session: AsyncSession = Depends(get_db_session)):
         svc = QuotaService(session)

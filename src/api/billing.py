@@ -5,7 +5,12 @@
 
 from __future__ import annotations
 
-import stripe
+try:
+    import stripe
+    STRIPE_AVAILABLE = True
+except ImportError:
+    STRIPE_AVAILABLE = False
+    stripe = None
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, Header, status
 from pydantic import BaseModel
@@ -21,7 +26,8 @@ from src.api.errors import create_error_response, ErrorCodes, handle_database_er
 
 # 初始化 Stripe
 settings = get_settings()
-stripe.api_key = settings.stripe_secret_key
+if STRIPE_AVAILABLE and settings.stripe_secret_key:
+    stripe.api_key = settings.stripe_secret_key
 
 router = APIRouter(prefix="/billing", tags=["billing"])
 
@@ -49,6 +55,13 @@ async def create_checkout_session(
     """
     创建 Stripe Checkout 会话，用于用户订阅
     """
+    if not STRIPE_AVAILABLE:
+        return create_error_response(
+            code=ErrorCodes.BUSINESS_LOGIC_ERROR,
+            message="支付服务暂时不可用",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE
+        )
+
     try:
         # 从配置获取 Stripe 价格 ID 和前后端 URL
         price_id = settings.stripe_price_id
@@ -106,6 +119,13 @@ async def create_portal_session(
     """
     创建 Stripe 客户门户会话，用于管理订阅
     """
+    if not STRIPE_AVAILABLE:
+        return create_error_response(
+            code=ErrorCodes.BUSINESS_LOGIC_ERROR,
+            message="支付服务暂时不可用",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE
+        )
+
     try:
         # 从配置加载客户门户返回 URL
         return_url = f"{settings.frontend_url}/settings/subscription"

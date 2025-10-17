@@ -9,7 +9,12 @@ import logging
 from typing import List, Optional, Dict, Any, Union, Callable
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
-import tiktoken
+try:
+    import tiktoken
+    TIKTOKEN_AVAILABLE = True
+except ImportError:
+    TIKTOKEN_AVAILABLE = False
+    tiktoken = None
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -200,35 +205,57 @@ class RecursiveCharacterChunker(BaseChunker):
 
 class TokenBasedChunker(BaseChunker):
     """基于Token的分块器 - 考虑LLM的Token限制"""
-    
+
     def __init__(self, chunk_size: int = 500, chunk_overlap: int = 50,
                  model_name: str = "gpt-3.5-turbo"):
         super().__init__(chunk_size, chunk_overlap)
         self.model_name = model_name
-        try:
-            self.encoding = tiktoken.encoding_for_model(model_name)
-        except KeyError:
-            # 如果模型不存在，使用默认编码
-            self.encoding = tiktoken.get_encoding("cl100k_base")
-            logger.warning(f"Model {model_name} not found, using cl100k_base encoding")
+        if not TIKTOKEN_AVAILABLE:
+            logger.warning("tiktoken not available, falling back to character-based chunking")
+            self.encoding = None
+        else:
+            try:
+                self.encoding = tiktoken.encoding_for_model(model_name)
+            except KeyError:
+                # 如果模型不存在，使用默认编码
+                self.encoding = tiktoken.get_encoding("cl100k_base")
+                logger.warning(f"Model {model_name} not found, using cl100k_base encoding")
     
     def count_tokens(self, text: str) -> int:
         """计算文本的Token数量"""
+        if self.encoding is None:
+            # 如果tiktoken不可用，使用字符数作为粗略估计
+            # 假设1个token约等于4个字符（这是一个粗略的估计）
+            return len(text) // 4
         return len(self.encoding.encode(text))
-    
+
     def split_text(self, text: str) -> List[TextChunk]:
         """基于Token数量分割文本"""
+        if self.encoding is None:
+            # 如果tiktoken不可用，回退到字符分块
+            logger.warning("tiktoken not available, falling back to character-based chunking")
+            char_chunker = RecursiveCharacterChunker(
+                chunk_size=self.chunk_size * 4,  # 假设1 token ≈ 4 chars
+                chunk_overlap=self.chunk_overlap * 4
+            )
+            chunks = char_chunker.split_text(text)
+            # 更新元数据
+            for chunk in chunks:
+                chunk.metadata["method"] = "token_based_fallback"
+                chunk.metadata["tokens"] = self.count_tokens(chunk.content)
+            return chunks
+
         chunks = []
-        
+
         # 首先尝试按段落分割
         paragraphs = text.split('\n\n')
         current_chunk = ""
         current_tokens = 0
         start_index = 0
-        
+
         for paragraph in paragraphs:
             paragraph_tokens = self.count_tokens(paragraph)
-            
+
             # 如果单个段落就超过chunk_size，需要进一步分割
             if paragraph_tokens > self.chunk_size:
                 if current_chunk:
@@ -242,11 +269,11 @@ class TokenBasedChunker(BaseChunker):
                     current_chunk = ""
                     current_tokens = 0
                     start_index += len(chunk.content)
-                
+
                 # 分割大段落
                 sub_chunks = self._split_large_paragraph(paragraph)
                 chunks.extend(sub_chunks)
-                
+
             elif current_tokens + paragraph_tokens > self.chunk_size:
                 # 保存当前块
                 if current_chunk:
@@ -256,25 +283,25 @@ class TokenBasedChunker(BaseChunker):
                         metadata={"tokens": current_tokens, "method": "token_based"}
                     )
                     chunks.append(chunk)
-                
+
                 # 开始新块（带重叠）
                 overlap_text = ""
                 if self.chunk_overlap > 0 and current_chunk:
                     words = current_chunk.split()
                     overlap_words = words[-self.chunk_overlap:]
                     overlap_text = " ".join(overlap_words)
-                
+
                 current_chunk = overlap_text + "\n\n" + paragraph if overlap_text else paragraph
                 current_tokens = self.count_tokens(current_chunk)
                 start_index += len(current_chunk) - len(overlap_text) - len(paragraph)
-                
+
             else:
                 if current_chunk:
                     current_chunk += "\n\n" + paragraph
                 else:
                     current_chunk = paragraph
                 current_tokens += paragraph_tokens
-        
+
         # 添加最后一块
         if current_chunk.strip():
             chunk = TextChunk(
@@ -283,7 +310,7 @@ class TokenBasedChunker(BaseChunker):
                 metadata={"tokens": current_tokens, "method": "token_based"}
             )
             chunks.append(chunk)
-        
+
         return chunks
     
     def _split_large_paragraph(self, paragraph: str) -> List[TextChunk]:

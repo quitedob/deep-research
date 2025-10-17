@@ -3,6 +3,7 @@
 使用 LangGraph 构建多智能体工作流图。
 """
 
+import logging
 from langgraph.graph import StateGraph, END
 from .state import GraphState
 from .agents import supervisor_node, researcher_node, writer_node

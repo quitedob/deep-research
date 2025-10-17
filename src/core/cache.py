@@ -99,6 +99,25 @@ class Cache:
         except ConnectionError:
             return False
 
+    async def connect(self):
+        """连接缓存（为了兼容性）"""
+        try:
+            # 尝试连接Redis
+            client = self._get_client()
+            await client.ping()
+            print("Redis缓存连接成功")
+        except Exception as e:
+            print(f"Redis缓存连接失败，使用内存缓存: {e}")
+
+    async def disconnect(self):
+        """断开缓存连接"""
+        try:
+            if self._redis_client:
+                await self._redis_client.close()
+                print("缓存连接已断开")
+        except Exception as e:
+            print(f"断开缓存连接失败: {e}")
+
 
 # 全局缓存实例
 cache = Cache()

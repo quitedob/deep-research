@@ -283,7 +283,7 @@ async def security_middleware_func(request: Request, call_next):
         # 为GET请求生成CSRF token
         if request.method == "GET" and request.url.path.startswith("/api/"):
             csrf_token = secrets.token_urlsafe(32)
-            self.csrf_tokens[csrf_token] = time.time()
+            security_middleware.csrf_tokens[csrf_token] = time.time()
             response.headers["X-CSRF-Token"] = csrf_token
 
         return response

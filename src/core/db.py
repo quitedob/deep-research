@@ -89,3 +89,7 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     """获取数据库会话（兼容旧接口）"""
     async with db_manager.get_session() as session:
         yield session
+
+
+# 为向后兼容添加别名
+get_async_session = get_db_session

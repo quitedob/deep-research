@@ -451,6 +451,424 @@ export const handleAPIError = (error) => {
   return error.message || '未知错误';
 };
 
+// 注意：default导出将在所有API定义完成后添加
+
+// 代码沙盒相关API
+export const codeSandboxAPI = {
+  // 执行代码
+  executeCode: (code, options = {}) => apiRequest('/code-sandbox/execute', {
+    method: 'POST',
+    body: JSON.stringify({
+      code,
+      timeout: options.timeout || 30,
+      memory_limit_mb: options.memory_limit_mb || 100,
+      context: options.context || {}
+    }),
+  }),
+
+  // 验证代码安全性
+  validateCode: (code, options = {}) => apiRequest('/code-sandbox/validate', {
+    method: 'POST',
+    body: JSON.stringify({
+      code,
+      timeout: options.timeout || 30,
+      memory_limit_mb: options.memory_limit_mb || 100
+    }),
+  }),
+
+  // 获取代码执行历史
+  getHistory: (params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return apiRequest(`/code-sandbox/history?${queryString}`);
+  },
+
+  // 删除历史记录项
+  deleteHistoryItem: (itemId) => apiRequest(`/code-sandbox/history/${itemId}`, {
+    method: 'DELETE',
+  }),
+
+  // 清空历史记录
+  clearHistory: () => apiRequest('/code-sandbox/history', {
+    method: 'DELETE',
+  }),
+
+  // 获取可用模块列表
+  getAvailableModules: () => apiRequest('/code-sandbox/modules'),
+};
+
+// 深度研究相关API
+export const researchAPI = {
+  // 开始研究
+  startResearch: (query, config = {}) => apiRequest('/research/start', {
+    method: 'POST',
+    body: JSON.stringify({ query, ...config }),
+  }),
+
+  // 获取研究状态
+  getResearchStatus: (researchId) => apiRequest(`/research/${researchId}/status`),
+
+  // 获取研究结果
+  getResearchResult: (researchId) => apiRequest(`/research/${researchId}/result`),
+
+  // 获取研究历史
+  getResearchHistory: (params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return apiRequest(`/research/history?${queryString}`);
+  },
+
+  // 删除研究记录
+  deleteResearch: (researchId) => apiRequest(`/research/${researchId}`, {
+    method: 'DELETE',
+  }),
+
+  // 订阅研究事件 (返回EventSource URL)
+  subscribeToEvents: (researchId) => `${API_BASE_URL}/research/${researchId}/events`,
+};
+
+// 知识库管理相关API
+export const knowledgeBaseAPI = {
+  // 获取知识库列表
+  getKnowledgeBases: (params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return apiRequest(`/knowledge-base/list?${queryString}`);
+  },
+
+  // 创建知识库
+  createKnowledgeBase: (kbData) => apiRequest('/knowledge-base/create', {
+    method: 'POST',
+    body: JSON.stringify(kbData),
+  }),
+
+  // 获取知识库详情
+  getKnowledgeBase: (kbId) => apiRequest(`/knowledge-base/${kbId}`),
+
+  // 更新知识库
+  updateKnowledgeBase: (kbId, kbData) => apiRequest(`/knowledge-base/${kbId}`, {
+    method: 'PUT',
+    body: JSON.stringify(kbData),
+  }),
+
+  // 删除知识库
+  deleteKnowledgeBase: (kbId) => apiRequest(`/knowledge-base/${kbId}`, {
+    method: 'DELETE',
+  }),
+
+  // 上传文档到知识库
+  uploadDocument: (kbId, file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    return apiRequest(`/knowledge-base/${kbId}/documents`, {
+      method: 'POST',
+      headers: {},
+      body: formData,
+    });
+  },
+
+  // 搜索知识库
+  searchKnowledgeBase: (kbId, query, options = {}) => {
+    const params = new URLSearchParams({ query, ...options });
+    return apiRequest(`/knowledge-base/${kbId}/search?${params.toString()}`);
+  },
+
+  // 导入知识库
+  importKnowledgeBase: (importData) => apiRequest('/knowledge-base/import', {
+    method: 'POST',
+    body: JSON.stringify(importData),
+  }),
+
+  // 导出知识库
+  exportKnowledgeBase: (kbId, format = 'json') =>
+    apiRequest(`/knowledge-base/${kbId}/export?format=${format}`),
+};
+
+// 文档分析相关API
+export const documentAnalysisAPI = {
+  // 上传文档进行分析
+  uploadDocument: (file, options = {}) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    Object.keys(options).forEach(key => {
+      formData.append(key, options[key]);
+    });
+
+    return apiRequest('/document-analysis/upload', {
+      method: 'POST',
+      headers: {},
+      body: formData,
+    });
+  },
+
+  // 获取文档分析状态
+  getAnalysisStatus: (documentId) => apiRequest(`/document-analysis/${documentId}/status`),
+
+  // 获取文档分析结果
+  getAnalysisResult: (documentId) => apiRequest(`/document-analysis/${documentId}/result`),
+
+  // 获取文档列表
+  getDocuments: (params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return apiRequest(`/document-analysis/documents?${queryString}`);
+  },
+
+  // 删除文档
+  deleteDocument: (documentId) => apiRequest(`/document-analysis/${documentId}`, {
+    method: 'DELETE',
+  }),
+
+  // 下载文档
+  downloadDocument: (documentId) => {
+    const url = `${API_BASE_URL}/document-analysis/${documentId}/download`;
+    const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
+
+    return fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+      credentials: 'include',
+    });
+  },
+
+  // 批量分析文档
+  batchAnalyze: (documentIds, options = {}) => apiRequest('/document-analysis/batch-analyze', {
+    method: 'POST',
+    body: JSON.stringify({ document_ids: documentIds, ...options }),
+  }),
+
+  // 从URL导入文档
+  importFromUrl: (url, options = {}) => apiRequest('/document-analysis/import-url', {
+    method: 'POST',
+    body: JSON.stringify({ url, ...options }),
+  }),
+};
+
+// 监控面板相关API
+export const monitoringAPI = {
+  // 获取系统概览
+  getSystemOverview: () => apiRequest('/monitoring/overview'),
+
+  // 获取性能指标
+  getPerformanceMetrics: (timeRange = '1h') =>
+    apiRequest(`/monitoring/performance?time_range=${timeRange}`),
+
+  // 获取资源使用情况
+  getResourceUsage: () => apiRequest('/monitoring/resources'),
+
+  // 获取错误日志
+  getErrorLogs: (params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return apiRequest(`/monitoring/errors?${queryString}`);
+  },
+
+  // 获取访问日志
+  getAccessLogs: (params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return apiRequest(`/monitoring/access?${queryString}`);
+  },
+
+  // 获取告警信息
+  getAlerts: (params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return apiRequest(`/monitoring/alerts?${queryString}`);
+  },
+
+  // 创建告警规则
+  createAlertRule: (ruleData) => apiRequest('/monitoring/alert-rules', {
+    method: 'POST',
+    body: JSON.stringify(ruleData),
+  }),
+
+  // 获取实时指标 (返回WebSocket URL)
+  getRealTimeMetrics: () => `${API_BASE_URL.replace('http', 'ws')}/monitoring/realtime`,
+};
+
+// 内容审核相关API
+export const contentModerationAPI = {
+  // 审核文本内容
+  moderateText: (text, options = {}) => apiRequest('/moderation/text', {
+    method: 'POST',
+    body: JSON.stringify({ text, ...options }),
+  }),
+
+  // 审核图片内容
+  moderateImage: (imageFile, options = {}) => {
+    const formData = new FormData();
+    formData.append('image', imageFile);
+    Object.keys(options).forEach(key => {
+      formData.append(key, options[key]);
+    });
+
+    return apiRequest('/moderation/image', {
+      method: 'POST',
+      headers: {},
+      body: formData,
+    });
+  },
+
+  // 获取审核记录
+  getModerationHistory: (params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return apiRequest(`/moderation/history?${queryString}`);
+  },
+
+  // 批量审核
+  batchModerate: (items, options = {}) => apiRequest('/moderation/batch', {
+    method: 'POST',
+    body: JSON.stringify({ items, ...options }),
+  }),
+
+  // 更新审核结果
+  updateModerationResult: (moderationId, result) => apiRequest(`/moderation/${moderationId}/result`, {
+    method: 'PUT',
+    body: JSON.stringify(result),
+  }),
+
+  // 获取审核统计
+  getModerationStats: (timeRange = '7d') =>
+    apiRequest(`/moderation/stats?time_range=${timeRange}`),
+
+  // 设置审核规则
+  setModerationRules: (rules) => apiRequest('/moderation/rules', {
+    method: 'PUT',
+    body: JSON.stringify(rules),
+  }),
+
+  // 获取审核规则
+  getModerationRules: () => apiRequest('/moderation/rules'),
+};
+
+// 搜索相关API
+export const searchAPI = {
+  // 通用搜索
+  search: (query, options = {}) => {
+    const params = new URLSearchParams({ query, ...options });
+    return apiRequest(`/search?${params.toString()}`);
+  },
+
+  // 智能搜索
+  smartSearch: (query, context = {}) => apiRequest('/search/smart', {
+    method: 'POST',
+    body: JSON.stringify({ query, context }),
+  }),
+
+  // 搜索建议
+  getSuggestions: (query, limit = 10) =>
+    apiRequest(`/search/suggestions?q=${encodeURIComponent(query)}&limit=${limit}`),
+
+  // 搜索历史
+  getSearchHistory: (params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return apiRequest(`/search/history?${queryString}`);
+  },
+
+  // 清除搜索历史
+  clearSearchHistory: () => apiRequest('/search/history', {
+    method: 'DELETE',
+  }),
+
+  // 保存搜索
+  saveSearch: (query, filters = {}) => apiRequest('/search/saved', {
+    method: 'POST',
+    body: JSON.stringify({ query, filters }),
+  }),
+
+  // 获取保存的搜索
+  getSavedSearches: () => apiRequest('/search/saved'),
+
+  // 删除保存的搜索
+  deleteSavedSearch: (searchId) => apiRequest(`/search/saved/${searchId}`, {
+    method: 'DELETE',
+  }),
+
+  // 搜索分析
+  getSearchAnalytics: (params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return apiRequest(`/search/analytics?${queryString}`);
+  },
+};
+
+// OCR相关API
+export const ocrAPI = {
+  // 图片OCR识别
+  recognizeImage: (imageFile, options = {}) => {
+    const formData = new FormData();
+    formData.append('image', imageFile);
+    Object.keys(options).forEach(key => {
+      formData.append(key, options[key]);
+    });
+
+    return apiRequest('/ocr/recognize', {
+      method: 'POST',
+      headers: {},
+      body: formData,
+    });
+  },
+
+  // PDF OCR识别
+  recognizePDF: (pdfFile, options = {}) => {
+    const formData = new FormData();
+    formData.append('pdf', pdfFile);
+    Object.keys(options).forEach(key => {
+      formData.append(key, options[key]);
+    });
+
+    return apiRequest('/ocr/pdf', {
+      method: 'POST',
+      headers: {},
+      body: formData,
+    });
+  },
+
+  // 批量OCR识别
+  batchRecognize: (files, options = {}) => {
+    const formData = new FormData();
+    files.forEach((file, index) => {
+      formData.append(`file_${index}`, file);
+    });
+    Object.keys(options).forEach(key => {
+      formData.append(key, options[key]);
+    });
+
+    return apiRequest('/ocr/batch', {
+      method: 'POST',
+      headers: {},
+      body: formData,
+    });
+  },
+
+  // 获取OCR任务状态
+  getTaskStatus: (taskId) => apiRequest(`/ocr/tasks/${taskId}`),
+
+  // 获取OCR结果
+  getOCRResult: (taskId) => apiRequest(`/ocr/results/${taskId}`),
+
+  // 获取OCR历史
+  getOCRHistory: (params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return apiRequest(`/ocr/history?${queryString}`);
+  },
+
+  // 下载OCR结果
+  downloadResult: (taskId, format = 'txt') => {
+    const url = `${API_BASE_URL}/ocr/results/${taskId}/download?format=${format}`;
+    const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
+
+    return fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+      credentials: 'include',
+    });
+  },
+
+  // 删除OCR任务
+  deleteTask: (taskId) => apiRequest(`/ocr/tasks/${taskId}`, {
+    method: 'DELETE',
+  }),
+};
+
+// 注意：所有兼容性函数已经在上面单独导出了，这里不需要重复导出
+
 // 导出所有API
 export default {
   auth: authAPI,
@@ -463,6 +881,12 @@ export default {
   health: healthAPI,
   evidence: evidenceAPI,
   ppt: pptAPI,
+  codeSandbox: codeSandboxAPI,
+  research: researchAPI,
+  knowledgeBase: knowledgeBaseAPI,
+  documentAnalysis: documentAnalysisAPI,
+  monitoring: monitoringAPI,
+  contentModeration: contentModerationAPI,
+  search: searchAPI,
+  ocr: ocrAPI,
 };
-
-// 注意：所有兼容性函数已经在上面单独导出了，这里不需要重复导出

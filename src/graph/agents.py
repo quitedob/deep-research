@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import List, Dict, Any
 
 from .state import GraphState
-from ..rag.retrieval import search_documents  # 假设已有检索服务
-from ..rag.reranker import rerank_documents  # 需要创建的重排序服务
+from ..core.rag.retrieval import search_documents  # 检索服务
+from ..core.rag.reranker import rerank_documents  # 重排序服务
 
 
 async def supervisor_node(state: GraphState) -> dict:
@@ -500,7 +500,7 @@ async def researcher_node(state: GraphState) -> dict:
 
     try:
         # 1. 初步检索
-        from ..rag.retrieval import search_documents, RetrievalStrategy
+        from ..core.rag.retrieval import search_documents, RetrievalStrategy
         initial_results = await search_documents(query, strategy=RetrievalStrategy.VECTOR_ONLY, top_k=20)
 
         # 2. 转换为字典格式供重排序器使用
@@ -644,8 +644,7 @@ def extract_summary(query: str, documents: List[Dict[str, Any]]) -> str:
     total_docs = len(documents)
     avg_score = sum(doc.get('rerank_score', doc.get('score', 0)) for doc in documents) / total_docs
 
-    summary = f"本次研究针对'{query}'主题，共检索到{total_docs}个相关信息来源，"
-    summary += ".3f"
+    summary = f"本次研究针对'{query}'主题，共检索到{total_docs}个相关信息来源，平均相关度分数为{avg_score:.3f}。"
     summary += "这些信息来源于多个可靠渠道，经过重排序和筛选，提供了较为全面的视角。"
 
     return summary

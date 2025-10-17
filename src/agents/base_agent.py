@@ -4,7 +4,13 @@ Agent 基础类 - 参考 AgentScope 的 AgentBase
 """
 import asyncio
 import logging
-import shortuuid
+try:
+    import shortuuid
+    SHORTUUID_AVAILABLE = True
+except ImportError:
+    SHORTUUID_AVAILABLE = False
+    import uuid
+    shortuuid = None
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Callable
 from dataclasses import dataclass, field
@@ -55,7 +61,7 @@ class AgentBase(ABC):
     
     def __init__(self, config: AgentConfig):
         self.config = config
-        self.id = shortuuid.uuid()
+        self.id = shortuuid.uuid() if SHORTUUID_AVAILABLE else str(uuid.uuid4())
         self.name = config.name
         self.role = config.role
         

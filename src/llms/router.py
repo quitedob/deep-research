@@ -1161,6 +1161,55 @@ class SmartModelRouter:
             "routing_config": self.conf.get("ROUTING", {})
         }
 
+    async def chat(self, task: str, size: str, messages: List[LLMMessage], temperature: float = 0.7, max_tokens: Optional[int] = None) -> Dict[str, Any]:
+        """
+        兼容性聊天接口，映射到route_and_chat方法
+
+        Args:
+            task: 任务类型
+            size: 模型大小 ('small', 'medium', 'large')
+            messages: 消息列表
+            temperature: 温度参数
+            max_tokens: 最大token数
+
+        Returns:
+            聊天响应结果
+        """
+        # 根据size调整token估计
+        size_to_tokens = {
+            "small": (500, 1000),
+            "medium": (1000, 2000),
+            "large": (2000, 4000)
+        }
+
+        input_tokens, output_tokens = size_to_tokens.get(size, size_to_tokens["medium"])
+
+        # 根据task类型调整质量要求
+        task_quality_requirements = {
+            "triage": 0.5,
+            "simple_chat": 0.6,
+            "code": 0.8,
+            "reasoning": 0.9,
+            "research": 0.85,
+            "creative": 0.8,
+            "general": 0.7
+        }
+
+        quality_requirement = task_quality_requirements.get(task, 0.7)
+
+        # 调用智能路由
+        return await self.route_and_chat(
+            task_type=task,
+            messages=messages,
+            estimated_input_tokens=input_tokens,
+            estimated_output_tokens=output_tokens,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            quality_requirement=quality_requirement,
+            cost_budget=None,  # 使用默认预算
+            speed_requirement=0.5
+        )
+
     async def health(self) -> Dict[str, Any]:
         """健康检查"""
         results = {}

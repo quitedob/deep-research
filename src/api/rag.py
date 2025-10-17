@@ -16,7 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from src.core.db import get_db_session
-from src.sqlmodel.models import User, DocumentProcessingJob
+from src.sqlmodel.models import User
+# from src.sqlmodel.models import DocumentProcessingJob  # Temporarily commented out as model doesn't exist
 from src.service.auth import get_current_user
 from src.tasks.queue import enqueue_task, get_task_status, TaskPriority
 from src.tasks.document_processor import process_document_task
@@ -76,9 +77,16 @@ async def upload_document_for_rag(
 ):
     """
     上传文档进行 RAG 处理
-    
+
     支持的文件格式：.docx, .doc, .txt, .md, .pdf
     """
+    # Temporarily disabled due to missing DocumentProcessingJob model
+    return create_error_response(
+        code=ErrorCodes.BUSINESS_LOGIC_ERROR,
+        message="文档上传功能暂时不可用，正在维护中",
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE
+    )
+
     try:
         # 检查文件大小（UploadFile没有size属性，需要读取内容）
         file_content = await file.read()
@@ -437,7 +445,7 @@ async def search_documents(
         use_reranking: 是否使用重排序（默认True）
     """
     try:
-        from src.rag.pgvector_store import get_pgvector_store
+        from src.core.rag.pgvector_store import get_pgvector_store
         from src.core.rag.reranker import TwoStageRAGRetriever, CrossEncoderReranker
         from src.api.evidence import EvidenceResponse
 
@@ -577,9 +585,9 @@ async def search_documents(
 
             # 最后的回退选项
             try:
-                from src.rag.retriever import create_default_retriever
+                from src.core.rag.retrieval import get_retriever
 
-                retriever = create_default_retriever()
+                retriever = get_retriever()
                 search_results = retriever.search(
                     query=query,
                     top_k=limit,

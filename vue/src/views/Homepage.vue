@@ -253,6 +253,31 @@ const toggleTheme = () => {
 onMounted(() => {
   console.log('[Homepage] 主页加载完成');
 
+  // 智能重定向检查 - 如果用户应该被引导到其他页面
+  const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
+  const isFirstVisit = !localStorage.getItem('has_visited_before');
+  const hasCompletedWelcome = localStorage.getItem('welcome_completed') === 'true';
+
+  console.log('[Homepage] 用户状态检查', {
+    hasToken: !!token,
+    isFirstVisit,
+    hasCompletedWelcome
+  });
+
+  // 如果用户已登录且有token，应该被重定向到home而不是显示homepage
+  if (token) {
+    console.log('[Homepage] 检测到已登录用户，重定向到主页');
+    window.location.href = '/home';
+    return;
+  }
+
+  // 如果这不是直接访问根路径（比如通过路由导航到/homepage），则可能需要特殊处理
+  // 但如果用户已经完成欢迎流程，可能更适合显示其他内容
+  if (hasCompletedWelcome && !isFirstVisit) {
+    console.log('[Homepage] 用户已完成欢迎流程，可以考虑展示更个性化的内容');
+    // 这里可以加载个性化推荐等内容
+  }
+
   // 恢复用户的主题偏好
   const savedTheme = localStorage.getItem('theme_preference');
   if (savedTheme === 'dark') {

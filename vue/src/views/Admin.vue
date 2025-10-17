@@ -324,7 +324,7 @@
           </div>
 
           <div class="review-info" v-else-if="report.status === 'resolved' || report.status === 'dismissed'">
-            <p><strong>审核结果:</strong> {{ getActionLabel(report.action_taken) }}</p>
+            <p><strong>审核结果:</strong> {{ getModerationActionLabel(report.action_taken) }}</p>
             <p v-if="report.review_notes"><strong>审核备注:</strong> {{ report.review_notes }}</p>
             <p><strong>审核人:</strong> {{ report.reviewer_admin_username }}</p>
             <p><strong>审核时间:</strong> {{ formatDate(report.reviewed_at) }}</p>
@@ -1099,7 +1099,7 @@ export default {
       return labels[reason] || reason;
     };
 
-    const getActionLabel = (action) => {
+    const getModerationActionLabel = (action) => {
       const labels = {
         'none': '无操作',
         'warning': '警告用户',
@@ -1313,6 +1313,7 @@ export default {
       getPriorityLabel,
       getModerationStatusLabel,
       getReasonLabel,
+      getModerationActionLabel,
       getHealthStatusClass,
       formatCurrency,
       formatNumber,

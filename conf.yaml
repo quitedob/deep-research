@@ -245,7 +245,7 @@ PORT: 8000
 ENABLE_RELOAD: true
 
 # --- 数据库配置 ---
-DATABASE_URL: "${DATABASE_URL:postgresql+asyncpg://deerflow:deerflow123@localhost:5432/deerflow}"
+DATABASE_URL: "${DATABASE_URL:postgresql+asyncpg://postgres:1234@localhost:5432/deep_research}"
 AUTO_CREATE_TABLES: true  # 开发环境自动创建表
 
 # --- Redis 配置 ---

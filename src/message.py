@@ -4,7 +4,13 @@
 支持复杂的消息交互、工具调用、多模态内容和推理链
 """
 
-import shortuuid
+try:
+    import shortuuid
+    SHORTUUID_AVAILABLE = True
+except ImportError:
+    SHORTUUID_AVAILABLE = False
+    import uuid
+    shortuuid = None
 import json
 import logging
 from typing import Any, Dict, List, Optional, Union, Callable
@@ -49,7 +55,7 @@ class MessageRole(Enum):
 class ContentBlock:
     """基础内容块类"""
     type: ContentType
-    id: str = field(default_factory=lambda: shortuuid.uuid())
+    id: str = field(default_factory=lambda: shortuuid.uuid() if SHORTUUID_AVAILABLE else str(uuid.uuid4()) if SHORTUUID_AVAILABLE else str(uuid.uuid4()))
     metadata: Dict[str, Any] = field(default_factory=dict)
     timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
 
@@ -85,7 +91,7 @@ class ContentBlock:
         else:
             return cls(
                 type=block_type,
-                id=data.get("id", shortuuid.uuid()),
+                id=data.get("id", shortuuid.uuid() if SHORTUUID_AVAILABLE else str(uuid.uuid4())),
                 metadata=data.get("metadata", {}),
                 timestamp=data.get("timestamp", datetime.now().isoformat())
             )
@@ -118,7 +124,7 @@ class TextBlock(ContentBlock):
     def from_dict(cls, data: Dict[str, Any]) -> "TextBlock":
         return cls(
             type=ContentType(data.get("type", "text")),
-            id=data.get("id", shortuuid.uuid()),
+            id=data.get("id", shortuuid.uuid() if SHORTUUID_AVAILABLE else str(uuid.uuid4())),
             text=data.get("text", ""),
             format=data.get("format", "plain"),
             language=data.get("language", "auto"),
@@ -157,7 +163,7 @@ class ThinkingBlock(ContentBlock):
     def from_dict(cls, data: Dict[str, Any]) -> "ThinkingBlock":
         return cls(
             type=ContentType(data.get("type", "thinking")),
-            id=data.get("id", shortuuid.uuid()),
+            id=data.get("id", shortuuid.uuid() if SHORTUUID_AVAILABLE else str(uuid.uuid4())),
             reasoning=data.get("reasoning", ""),
             step_number=data.get("step_number", 0),
             step_type=data.get("step_type", "general"),
@@ -205,7 +211,7 @@ class ReferenceBlock(ContentBlock):
     def from_dict(cls, data: Dict[str, Any]) -> "ReferenceBlock":
         return cls(
             type=ContentType(data.get("type", "reference")),
-            id=data.get("id", shortuuid.uuid()),
+            id=data.get("id", shortuuid.uuid() if SHORTUUID_AVAILABLE else str(uuid.uuid4())),
             title=data.get("title", ""),
             content=data.get("content", ""),
             source=data.get("source", ""),
@@ -247,7 +253,7 @@ class ToolUseBlock(ContentBlock):
     def from_dict(cls, data: Dict[str, Any]) -> "ToolUseBlock":
         return cls(
             type=ContentType(data.get("type", "tool_use")),
-            id=data.get("id", shortuuid.uuid()),
+            id=data.get("id", shortuuid.uuid() if SHORTUUID_AVAILABLE else str(uuid.uuid4())),
             name=data.get("name", ""),
             input=data.get("input", {}),
             tool_type=data.get("tool_type", "function"),
@@ -288,7 +294,7 @@ class ToolResultBlock(ContentBlock):
     def from_dict(cls, data: Dict[str, Any]) -> "ToolResultBlock":
         return cls(
             type=ContentType(data.get("type", "tool_result")),
-            id=data.get("id", shortuuid.uuid()),
+            id=data.get("id", shortuuid.uuid() if SHORTUUID_AVAILABLE else str(uuid.uuid4())),
             tool_use_id=data.get("tool_use_id", ""),
             name=data.get("name", ""),
             output=data.get("output"),
@@ -329,7 +335,7 @@ class ImageBlock(ContentBlock):
     def from_dict(cls, data: Dict[str, Any]) -> "ImageBlock":
         return cls(
             type=ContentType(data.get("type", "image")),
-            id=data.get("id", shortuuid.uuid()),
+            id=data.get("id", shortuuid.uuid() if SHORTUUID_AVAILABLE else str(uuid.uuid4())),
             url=data.get("url", ""),
             alt_text=data.get("alt_text", ""),
             format=data.get("format", "unknown"),
@@ -369,7 +375,7 @@ class CodeBlock(ContentBlock):
     def from_dict(cls, data: Dict[str, Any]) -> "CodeBlock":
         return cls(
             type=ContentType(data.get("type", "code")),
-            id=data.get("id", shortuuid.uuid()),
+            id=data.get("id", shortuuid.uuid() if SHORTUUID_AVAILABLE else str(uuid.uuid4())),
             code=data.get("code", ""),
             language=data.get("language", "python"),
             explanation=data.get("explanation", ""),
@@ -413,7 +419,7 @@ class StepsBlock(ContentBlock):
     def from_dict(cls, data: Dict[str, Any]) -> "StepsBlock":
         return cls(
             type=ContentType(data.get("type", "steps")),
-            id=data.get("id", shortuuid.uuid()),
+            id=data.get("id", shortuuid.uuid() if SHORTUUID_AVAILABLE else str(uuid.uuid4())),
             steps=data.get("steps", []),
             current_step=data.get("current_step", 0),
             total_steps=data.get("total_steps", 0),
@@ -431,7 +437,7 @@ class Msg:
     content: Union[str, List[ContentBlock], List[Dict[str, Any]]]
     role: MessageRole
     metadata: Dict[str, Any] = field(default_factory=dict)
-    id: str = field(default_factory=lambda: shortuuid.uuid())
+    id: str = field(default_factory=lambda: shortuuid.uuid() if SHORTUUID_AVAILABLE else str(uuid.uuid4()) if SHORTUUID_AVAILABLE else str(uuid.uuid4()))
     timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
     parent_id: Optional[str] = None  # 父消息ID，用于构建对话树
     thread_id: Optional[str] = None  # 线程ID，用于多轮对话管理
@@ -625,7 +631,7 @@ class Msg:
             content=content,
             role=MessageRole(data.get("role", "user")),
             metadata=data.get("metadata", {}),
-            id=data.get("id", shortuuid.uuid()),
+            id=data.get("id", shortuuid.uuid() if SHORTUUID_AVAILABLE else str(uuid.uuid4())),
             timestamp=data.get("timestamp", datetime.now().isoformat()),
             parent_id=data.get("parent_id"),
             thread_id=data.get("thread_id")
