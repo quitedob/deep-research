@@ -13,31 +13,40 @@ from dotenv import load_dotenv
 # 加载环境变量
 load_dotenv()
 
-# 路由层
-from src.serve.api import api_router
+# 核心健康检查和提供商信息已整合到 api/health.py
 from src.core.db import init_engine
 from src.core.db_init import init_database_and_tables
 from src.sqlmodel.models import Base
 from src.sqlmodel import rag_models  # 确保RAG模型被导入
 from src.core.cache import cache
 from sqlalchemy.ext.asyncio import AsyncEngine
+# 现有API路由
 from src.api.billing import router as billing_router
 from src.api.rag import router as rag_router
 from src.api.llm_config import router as llm_config_router
 from src.api.conversation import router as conversation_router
 from src.api.evidence import router as evidence_router
 from src.api.health import router as health_router
-# from src.core.ppt.api.routes import router as ppt_router  # Module doesn't exist
-# Temporarily disabled due to missing modules
-# from src.api.agents import router as agents_router
 from src.api.admin import router as admin_router
+from src.api.ppt import router as ppt_router
+from src.api.quota import router as quota_router
+
+# 新重构的API模块
+from src.api.chat import router as chat_router
+from src.api.export import router as export_router
+from src.api.research import router as research_router
+from src.api.history import router as history_router
+from src.api.search_full import router as search_full_router
+from src.api.share import router as share_router
+from src.api.user import router as user_router
+
+# 暂时禁用的路由（由于模块不存在）
+# from src.api.agents import router as agents_router
 # from src.api.llm_provider import router as llm_provider_router
 # from src.api.search import router as search_router
 # from src.api.agent_llm_config import router as agent_llm_config_router
-from src.api.ppt import router as ppt_router
 # from src.api.ocr import router as ocr_router
 # from src.api.file_upload import router as file_upload_router
-from src.api.quota import router as quota_router
 from src.middleware.monitoring import request_monitoring_middleware
 from src.middleware.security import security_middleware_func
 from src.config.config_loader import get_settings
@@ -149,38 +158,32 @@ def create_app() -> FastAPI:
         max_age=86400,  # 24小时
     )
 
-    # 注册路由
-    # 注册统一 /api 前缀路由
-    app.include_router(api_router, prefix="/api")
+    # 注册路由 - 统一 /api 前缀
 
-    # 注册计费路由
-    app.include_router(billing_router, prefix="/api")
-
-    # 注册 RAG 路由
-    app.include_router(rag_router, prefix="/api")
-
-    # 注册 LLM 配置路由
-    app.include_router(llm_config_router, prefix="/api")
-
-    # 注册对话记忆路由
-    app.include_router(conversation_router, prefix="/api")
-
-    # 注册证据链路由
-    app.include_router(evidence_router, prefix="/api")
-
-    # 注册健康检查路由
+    # 健康检查路由（已整合serve层的健康检查和提供商信息）
     app.include_router(health_router, prefix="/api")
 
-    # 注册 PPT 生成路由（新位置）
-    app.include_router(ppt_router, prefix="/api")
+    # 原有API路由
+    app.include_router(billing_router, prefix="/api")      # 计费
+    app.include_router(rag_router, prefix="/api")          # RAG功能
+    app.include_router(llm_config_router, prefix="/api")   # LLM配置
+    app.include_router(conversation_router, prefix="/api") # 对话记忆
+    app.include_router(evidence_router, prefix="/api")     # 证据链
+    # app.include_router(health_router, prefix="/api")   # 健康检查已在上方注册
+    app.include_router(ppt_router, prefix="/api")          # PPT生成
+    app.include_router(admin_router, prefix="/api")        # 管理员
+    app.include_router(quota_router, prefix="/api")        # 配额管理
 
-    # 注册管理员路由
-    app.include_router(admin_router, prefix="/api")
+    # 新重构的API模块
+    app.include_router(chat_router, prefix="/api")         # 聊天功能
+    app.include_router(export_router, prefix="/api")       # 导出功能
+    app.include_router(research_router, prefix="/api")     # 研究功能
+    app.include_router(history_router, prefix="/api")      # 历史记录
+    app.include_router(search_full_router, prefix="/api")  # 搜索功能
+    app.include_router(share_router, prefix="/api")        # 分享功能
+    app.include_router(user_router, prefix="/api")         # 用户功能
 
-    # 注册配额路由
-    app.include_router(quota_router, prefix="/api")
-
-    # Temporarily disabled routers due to missing modules
+    # 暂时禁用的路由（由于模块不存在）
     # app.include_router(agents_router, prefix="/api")
     # app.include_router(llm_provider_router, prefix="/api")
     # app.include_router(search_router, prefix="/api")

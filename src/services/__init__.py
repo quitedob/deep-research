@@ -15,6 +15,8 @@ from .billing_service import BillingService
 from .document_service import DocumentService
 from .conversation_service import ConversationService
 from .research_service import ResearchService
+from .session_service import SessionService, session_service, store
+from .agent_manager_service import AgentManagerV2
 
 # 便捷函数导出（保持向后兼容）
 from .auth_service import (
@@ -48,6 +50,12 @@ __all__ = [
     "DocumentService",
     "ConversationService",
     "ResearchService",
+    "SessionService",
+    "AgentManagerV2",
+
+    # 会话服务实例（向后兼容）
+    "session_service",
+    "store",
 
     # 便捷函数（向后兼容）
     "get_current_user",

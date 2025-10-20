@@ -5,6 +5,7 @@
 """
 
 from typing import Dict, Any
+from pathlib import Path
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,8 +14,12 @@ from ..service.auth import get_current_user
 from ..middleware.monitoring import get_health_status, get_metrics
 from src.core.db import get_db_session
 from src.config.logging import get_performance_monitor
+from src.llms.router import ModelRouter
 
 router = APIRouter(prefix="/health", tags=["health"])
+
+# 初始化模型路由器
+_model_router = ModelRouter.from_conf(Path("conf.yaml"))
 
 @router.get("/")
 async def health_check():
@@ -22,7 +27,21 @@ async def health_check():
     基础健康检查
     返回系统整体健康状态
     """
-    return await get_health_status()
+    # 合并原有的健康状态和LLM提供商状态
+    basic_health = await get_health_status()
+    llm_health = await _model_router.health()
+
+    # 合并信息
+    basic_health["llm_providers"] = llm_health.get("providers", {})
+    return basic_health
+
+@router.get("/llm-providers")
+async def get_llm_providers():
+    """
+    获取可用的LLM提供商信息
+    """
+    info = await _model_router.health()
+    return {"available": [name for name, st in info.get("providers", {}).items() if st.get("ok")], "details": info}
 
 @router.get("/detailed")
 async def detailed_health_check(
