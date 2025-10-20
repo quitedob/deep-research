@@ -101,9 +101,17 @@ export const authAPI = {
   // 用户登录
   login: (credentials) => {
     console.log('[AuthAPI] 用户登录请求', { username: credentials.username });
+    // OAuth2PasswordRequestForm 需要使用 URL编码的表单数据，不是JSON
+    const formData = new URLSearchParams();
+    formData.append('username', credentials.username);
+    formData.append('password', credentials.password);
+
     return apiRequest('/auth/login', {
       method: 'POST',
-      body: JSON.stringify(credentials),
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: formData.toString(),
     });
   },
 
@@ -368,11 +376,20 @@ export const fetchOllamaModelTags = () =>
   apiRequest('/ollama/tags');
 
 // 用户认证API (兼容性)
-export const loginUser = (credentials) =>
-  apiRequest('/auth/login', {
+export const loginUser = (credentials) => {
+  // OAuth2PasswordRequestForm 需要使用 URL编码的表单数据，不是JSON
+  const formData = new URLSearchParams();
+  formData.append('username', credentials.username);
+  formData.append('password', credentials.password);
+
+  return apiRequest('/auth/login', {
     method: 'POST',
-    body: JSON.stringify(credentials),
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: formData.toString(),
   });
+};
 
 export const registerUser = (userData) =>
   apiRequest('/auth/register', {

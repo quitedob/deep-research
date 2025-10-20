@@ -17,6 +17,7 @@ from ..api.errors import create_error_response, ErrorCodes, handle_database_erro
 from ..sqlmodel.models import User, AdminAuditLog
 from ..core.db import get_async_session
 from ..service.audit_service import AuditService, audit_admin_action, log_admin_action_dependency
+from ..dao import AdminDAO, SubscriptionDAO, DocumentProcessingJobDAO, UsersDAO
 
 logger = logging.getLogger(__name__)
 
@@ -141,40 +142,32 @@ async def list_all_users(
     limit: int = Query(100, ge=1, le=1000),
     role: Optional[str] = Query(None),
     is_active: Optional[bool] = Query(None),
+    search: Optional[str] = Query(None),
     current_admin: User = Depends(require_admin),
     session: AsyncSession = Depends(get_async_session)
 ):
     """
     获取所有用户列表
-    
+
     - **skip**: 跳过的记录数
     - **limit**: 返回的最大记录数
     - **role**: 按角色筛选（free, subscribed, admin）
     - **is_active**: 按激活状态筛选
+    - **search**: 搜索用户名或邮箱
     """
     try:
-        # 构建查询
-        query = select(User)
-        
-        # 添加筛选条件
-        conditions = []
-        if role:
-            conditions.append(User.role == role)
-        if is_active is not None:
-            conditions.append(User.is_active == is_active)
-        
-        if conditions:
-            query = query.where(and_(*conditions))
-        
-        # 添加分页
-        query = query.offset(skip).limit(limit).order_by(User.created_at.desc())
-        
-        # 执行查询
-        result = await session.execute(query)
-        users = result.scalars().all()
-        
+        # 使用 AdminDAO 获取用户列表
+        admin_dao = AdminDAO(session)
+        users = await admin_dao.get_users_with_filters(
+            skip=skip,
+            limit=limit,
+            role=role,
+            is_active=is_active,
+            search=search
+        )
+
         return [UserListResponse.from_orm(user) for user in users]
-    
+
     except Exception as e:
         logger.error(f"获取用户列表失败: {e}")
         return handle_database_error(e)
@@ -344,42 +337,18 @@ async def get_user_stats(
 ):
     """获取用户统计信息"""
     try:
-        # 总用户数
-        total_result = await session.execute(select(func.count(User.id)))
-        total_users = total_result.scalar()
-        
-        # 活跃用户数
-        active_result = await session.execute(
-            select(func.count(User.id)).where(User.is_active == True)
-        )
-        active_users = active_result.scalar()
-        
-        # 管理员数
-        admin_result = await session.execute(
-            select(func.count(User.id)).where(User.role == "admin")
-        )
-        admin_users = admin_result.scalar()
-        
-        # 订阅用户数
-        subscribed_result = await session.execute(
-            select(func.count(User.id)).where(User.role == "subscribed")
-        )
-        subscribed_users = subscribed_result.scalar()
-        
-        # 免费用户数
-        free_result = await session.execute(
-            select(func.count(User.id)).where(User.role == "free")
-        )
-        free_users = free_result.scalar()
-        
+        # 使用 AdminDAO 获取用户统计
+        admin_dao = AdminDAO(session)
+        stats = await admin_dao.get_user_statistics()
+
         return UserStatsResponse(
-            total_users=total_users,
-            active_users=active_users,
-            admin_users=admin_users,
-            subscribed_users=subscribed_users,
-            free_users=free_users
+            total_users=stats.get("total_users", 0),
+            active_users=stats.get("active_users", 0),
+            admin_users=stats.get("admin_users", 0),
+            subscribed_users=stats.get("subscribed_users", 0),
+            free_users=stats.get("free_users", 0)
         )
-    
+
     except Exception as e:
         logger.error(f"获取用户统计失败: {e}")
         return handle_database_error(e)
@@ -397,52 +366,31 @@ async def get_user_conversations(
 ):
     """获取指定用户的对话记录"""
     try:
-        # 验证用户存在
-        user_result = await session.execute(
-            select(User).where(User.id == user_id)
+        # 使用 AdminDAO 获取用户对话记录
+        admin_dao = AdminDAO(session)
+        sessions_with_count = await admin_dao.get_user_conversations(
+            user_id=user_id,
+            skip=skip,
+            limit=limit
         )
-        user = user_result.scalar_one_or_none()
-        
-        if not user:
-            return handle_not_found_error("用户", user_id)
-        
-        # 导入对话模型
-        from ..sqlmodel.models import ConversationSession, ConversationMessage
-        
-        # 查询对话会话
-        query = select(ConversationSession).where(
-            ConversationSession.user_id == user_id
-        ).order_by(ConversationSession.updated_at.desc()).offset(skip).limit(limit)
-        
-        result = await session.execute(query)
-        sessions = result.scalars().all()
-        
-        # 获取每个会话的消息数量
-        sessions_with_count = []
-        for sess in sessions:
-            count_result = await session.execute(
-                select(func.count(ConversationMessage.id)).where(
-                    ConversationMessage.session_id == sess.id
-                )
-            )
-            message_count = count_result.scalar()
-            
-            sessions_with_count.append({
-                "id": str(sess.id),
-                "user_id": str(sess.user_id),
-                "title": sess.title,
-                "created_at": sess.created_at,
-                "updated_at": sess.updated_at,
-                "message_count": message_count
-            })
-        
+
+        if not sessions_with_count:
+            # 用户不存在检查
+            users_dao = UsersDAO(session)
+            user = await users_dao.get_by_id(user_id)
+            if not user:
+                return handle_not_found_error("用户", user_id)
+            username = user.username
+        else:
+            username = sessions_with_count[0].get("username", "Unknown") if sessions_with_count else "Unknown"
+
         return {
             "user_id": user_id,
-            "username": user.username,
+            "username": username,
             "total_sessions": len(sessions_with_count),
             "sessions": sessions_with_count
         }
-    
+
     except HTTPException:
         raise
     except Exception as e:
@@ -503,43 +451,28 @@ async def get_user_documents(
 ):
     """获取指定用户的文档处理任务"""
     try:
-        # 验证用户存在
-        user_result = await session.execute(
-            select(User).where(User.id == user_id)
+        # 使用 AdminDAO 获取用户文档
+        admin_dao = AdminDAO(session)
+        jobs = await admin_dao.get_user_documents(
+            user_id=user_id,
+            skip=skip,
+            limit=limit
         )
-        user = user_result.scalar_one_or_none()
-        
+
+        # 获取用户信息
+        users_dao = UsersDAO(session)
+        user = await users_dao.get_by_id(user_id)
+
         if not user:
             return handle_not_found_error("用户", user_id)
-        
-        # 导入文档处理任务模型
-        from ..sqlmodel.models import DocumentProcessingJob
-        
-        # 查询文档处理任务
-        query = select(DocumentProcessingJob).where(
-            DocumentProcessingJob.user_id == user_id
-        ).order_by(DocumentProcessingJob.created_at.desc()).offset(skip).limit(limit)
-        
-        result = await session.execute(query)
-        jobs = result.scalars().all()
-        
+
         return {
             "user_id": user_id,
             "username": user.username,
             "total_jobs": len(jobs),
-            "jobs": [
-                {
-                    "id": str(job.id),
-                    "filename": job.filename,
-                    "status": job.status,
-                    "created_at": job.created_at,
-                    "updated_at": job.updated_at,
-                    "error_message": job.error_message
-                }
-                for job in jobs
-            ]
+            "jobs": jobs
         }
-    
+
     except HTTPException:
         raise
     except Exception as e:
@@ -657,43 +590,19 @@ async def get_all_subscriptions(
 ):
     """获取所有订阅记录"""
     try:
-        from ..sqlmodel.models import Subscription
-        
-        # 构建查询
-        query = select(Subscription)
-        
-        if status:
-            query = query.where(Subscription.status == status)
-        
-        query = query.order_by(Subscription.created_at.desc()).offset(skip).limit(limit)
-        
-        result = await session.execute(query)
-        subscriptions = result.scalars().all()
-        
-        # 获取用户信息
-        subscriptions_with_user = []
-        for sub in subscriptions:
-            user_result = await session.execute(
-                select(User).where(User.id == sub.user_id)
-            )
-            user = user_result.scalar_one_or_none()
-            
-            subscriptions_with_user.append({
-                "id": str(sub.id),
-                "user_id": str(sub.user_id),
-                "username": user.username if user else "Unknown",
-                "stripe_subscription_id": sub.stripe_subscription_id,
-                "status": sub.status,
-                "current_period_start": sub.current_period_start,
-                "current_period_end": sub.current_period_end,
-                "created_at": sub.created_at
-            })
-        
+        # 使用 SubscriptionDAO 获取订阅记录
+        subscription_dao = SubscriptionDAO(session)
+        subscriptions = await subscription_dao.get_all_subscriptions_with_users(
+            status=status,
+            skip=skip,
+            limit=limit
+        )
+
         return {
-            "total": len(subscriptions_with_user),
-            "subscriptions": subscriptions_with_user
+            "total": len(subscriptions),
+            "subscriptions": subscriptions
         }
-    
+
     except Exception as e:
         logger.error(f"获取订阅记录失败: {e}")
         return handle_database_error(e)
@@ -708,31 +617,16 @@ async def update_subscription(
 ):
     """更新订阅状态"""
     try:
-        from ..sqlmodel.models import Subscription
-        
-        # 查询订阅
-        result = await session.execute(
-            select(Subscription).where(Subscription.id == subscription_id)
+        # 使用 SubscriptionDAO 更新订阅状态
+        subscription_dao = SubscriptionDAO(session)
+        subscription = await subscription_dao.update_subscription_status(
+            subscription_id=subscription_id,
+            new_status=status
         )
-        subscription = result.scalar_one_or_none()
-        
+
         if not subscription:
             return handle_not_found_error("订阅", subscription_id)
-        
-        # 验证状态
-        valid_statuses = ["active", "canceled", "past_due", "unpaid"]
-        if status not in valid_statuses:
-            raise APIException(
-                code=ErrorCodes.VALIDATION_ERROR,
-                message=f"无效的状态。有效值: {valid_statuses}",
-                status_code=400
-            )
-        
-        # 更新状态
-        subscription.status = status
-        await session.commit()
-        await session.refresh(subscription)
-        
+
         return {
             "success": True,
             "message": "订阅状态已更新",
@@ -741,9 +635,15 @@ async def update_subscription(
                 "status": subscription.status
             }
         }
-    
+
     except HTTPException:
         raise
+    except ValueError as e:
+        raise APIException(
+            code=ErrorCodes.VALIDATION_ERROR,
+            message=str(e),
+            status_code=400
+        )
     except Exception as e:
         logger.error(f"更新订阅状态失败: {e}")
         await session.rollback()

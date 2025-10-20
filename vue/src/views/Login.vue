@@ -3,7 +3,7 @@
     <div class="auth-card">
       <div class="auth-header">
         <div class="logo-container">
-          <img src="https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_92x30dp.png" alt="Google" class="logo">
+          <img src="@/assets/logo.svg" alt="Deep Research" class="logo">
           <div class="brand-name">Deep Research</div>
         </div>
         <h2 class="title">登录您的账户</h2>
@@ -17,11 +17,11 @@
             id="username"
             autocomplete="username"
             required
-            placeholder=" "
+            placeholder="请输入账号"
             @blur="touched.username = true"
             :class="{ invalid: usernameError && touched.username }"
           />
-          <label for="username">账号 / Account</label>
+          <label for="username">账号</label>
           <div class="animated-border"></div>
           <p v-if="usernameError && touched.username" class="error">{{ usernameError }}</p>
         </div>
@@ -33,21 +33,21 @@
             id="password"
             autocomplete="current-password"
             required
-            placeholder=" "
+            placeholder="请输入密码"
             @blur="touched.password = true"
             :class="{ invalid: passwordError && touched.password }"
           />
           <button type="button" @click="togglePasswordVisibility" class="password-toggle">
             {{ passwordFieldType === 'password' ? '显示' : '隐藏' }}
           </button>
-          <label for="password">密码 / Password</label>
+          <label for="password">密码</label>
           <div class="animated-border"></div>
           <p v-if="passwordError && touched.password" class="error">{{ passwordError }}</p>
         </div>
 
         <label class="remember">
           <input type="checkbox" v-model="rememberMe" />
-          <span>记住我 / Remember me</span>
+          <span>记住我</span>
         </label>
 
         <div class="footer-actions">
@@ -57,7 +57,6 @@
           </button>
         </div>
       </form>
-      <p class="tip">默认管理员：用户名 admin，密码 root123456</p>
     </div>
   </div>
 </template>
@@ -104,11 +103,11 @@ const doLogin = async () => {
     console.log('[Login] 开始登录流程', { username: username.value, rememberMe: rememberMe.value });
 
     const data = await loginUser(username.value, password.value);
-    console.log('[Login] 登录响应', { token: data.token?.substring(0, 20) + '...', username: data.username });
+    console.log('[Login] 登录响应', { token: data.access_token?.substring(0, 20) + '...', username: username.value });
 
     const storage = rememberMe.value ? localStorage : sessionStorage;
-    storage.setItem('auth_token', data.token);
-    storage.setItem('auth_username', data.username);
+    storage.setItem('auth_token', data.access_token);
+    storage.setItem('auth_username', username.value);
     console.log('[Login] Token已保存到', rememberMe.value ? 'localStorage' : 'sessionStorage');
 
     // 获取用户详细信息（包括角色）
@@ -352,16 +351,6 @@ onMounted(() => {
   box-shadow: none;
 }
 
-.tip {
-  margin-top: 28px;
-  font-size: 13px;
-  color: #5f6368;
-  text-align: center;
-  padding: 12px;
-  background-color: #f8f9fa;
-  border-radius: 8px;
-  border-left: 4px solid #1a73e8;
-}
 
 .password-toggle {
   position: absolute;

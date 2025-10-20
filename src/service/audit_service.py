@@ -177,7 +177,7 @@ class AuditService:
 # 创建审计依赖函数
 from fastapi import Depends
 from ..core.db import get_async_session
-from ..api.deps import get_current_user
+from ..api.auth import get_current_user
 
 
 async def log_admin_action_dependency(

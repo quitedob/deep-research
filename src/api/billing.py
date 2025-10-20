@@ -20,7 +20,7 @@ from sqlalchemy.orm import selectinload
 
 from src.core.db import get_db_session
 from src.sqlmodel.models import User, Subscription
-from src.service.auth import get_current_user
+from src.services.auth import get_current_user
 from src.config.config_loader import get_settings
 from src.api.errors import create_error_response, ErrorCodes, handle_database_error, handle_not_found_error
 

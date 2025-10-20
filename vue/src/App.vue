@@ -4,26 +4,39 @@
     <header class="app-header">
       <div class="header-content">
         <div class="logo">
-          <i class="icon-brain"></i>
+          <img src="@/assets/logo.svg" alt="Deep Research" class="logo-icon">
           <span>Deep Research</span>
         </div>
         <nav class="main-nav">
-          <button
+          <router-link
+            to="/home"
             class="nav-item"
-            :class="{ active: currentView === 'chat' }"
-            @click="switchView('chat')"
+            custom
+            v-slot="{ navigate, isActive }"
           >
-            <i class="icon-message"></i>
-            对话
-          </button>
-          <button
+            <button
+              :class="{ active: isActive }"
+              @click="navigate"
+            >
+              <i class="icon-message"></i>
+              对话
+            </button>
+          </router-link>
+          <router-link
+            v-if="isAdmin"
+            to="/admin"
             class="nav-item"
-            :class="{ active: currentView === 'dashboard' }"
-            @click="switchView('dashboard')"
+            custom
+            v-slot="{ navigate, isActive }"
           >
-            <i class="icon-dashboard"></i>
-            控制台
-          </button>
+            <button
+              :class="{ active: isActive }"
+              @click="navigate"
+            >
+              <i class="icon-dashboard"></i>
+              控制台
+            </button>
+          </router-link>
         </nav>
         <div class="header-actions">
           <UserProfileMenu :current-theme="theme" @toggle-theme="toggleTheme" />
@@ -33,26 +46,8 @@
 
     <!-- 主要内容区域 -->
     <main class="app-main">
-      <!-- 对话界面 -->
-      <div v-if="currentView === 'chat'" class="view-container">
-        <ChatContainer
-          :current-theme="theme"
-          @toggle-theme="toggleTheme"
-          @send-message-from-container="handleSendMessage"
-          @edit-and-send="handleEditAndSend"
-          @regenerate="handleRegenerate"
-        />
-      </div>
-
-      <!-- 控制台界面 -->
-      <div v-else-if="currentView === 'dashboard'" class="view-container">
-        <Dashboard
-          :current-conversation-id="currentConversationId"
-          :current-research-session-id="currentResearchSessionId"
-          @document-selected="handleDocumentSelected"
-          @search-result-selected="handleSearchResultSelected"
-          @evidence-viewed="handleEvidenceViewed"
-        />
+      <div class="view-container">
+        <router-view />
       </div>
     </main>
 
@@ -66,18 +61,25 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useChatStore } from '@/store';
 import SettingsModal from '@/components/SettingsModal.vue';
-import ChatContainer from '@/components/ChatContainer.vue';
-import Dashboard from '@/components/Dashboard.vue';
 import UserProfileMenu from '@/components/UserProfileMenu.vue';
 
 const theme = ref('dark'); // 默认主题
 const chatStore = useChatStore();
-const currentView = ref('chat'); // 'chat' 或 'dashboard'
-const currentConversationId = ref(null);
-const currentResearchSessionId = ref(null);
+
+// 计算管理员权限
+const isAdmin = computed(() => {
+  try {
+    const userStr = localStorage.getItem('user') || sessionStorage.getItem('user');
+    const user = userStr ? JSON.parse(userStr) : null;
+    return user?.role === 'admin';
+  } catch (error) {
+    console.error('[App] 解析用户信息失败:', error);
+    return false;
+  }
+});
 
 // 完整的 toggleTheme 方法
 const toggleTheme = () => {
@@ -116,41 +118,6 @@ watch(theme, (newTheme, oldTheme) => {
   }
 });
 
-// 视图切换方法
-const switchView = (view) => {
-  currentView.value = view;
-};
-
-// 事件处理方法
-const handleSendMessage = (message) => {
-  // 处理从容器发送的消息
-  console.log('发送消息:', message);
-};
-
-const handleEditAndSend = (message) => {
-  // 处理编辑并发送
-  console.log('编辑并发送:', message);
-};
-
-const handleRegenerate = (message) => {
-  // 处理重新生成
-  console.log('重新生成:', message);
-};
-
-const handleDocumentSelected = (document) => {
-  // 处理文档选择
-  console.log('文档选择:', document);
-};
-
-const handleSearchResultSelected = (result) => {
-  // 处理搜索结果选择
-  console.log('搜索结果选择:', result);
-};
-
-const handleEvidenceViewed = (evidence) => {
-  // 处理证据查看
-  console.log('证据查看:', evidence);
-};
 </script>
 
 <style>
@@ -199,6 +166,11 @@ body {
   font-size: 18px;
   font-weight: 600;
   color: var(--text-primary);
+}
+
+.logo-icon {
+  height: 24px;
+  width: 24px;
 }
 
 .main-nav {

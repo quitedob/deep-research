@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 from io import BytesIO
 
+logger = logging.getLogger(__name__)
+
 try:
     from pptx import Presentation
     from pptx.util import Pt, Inches
@@ -19,8 +21,6 @@ try:
 except ImportError:
     PPTX_AVAILABLE = False
     logger.warning("python-pptx未安装，PPT渲染功能不可用")
-
-logger = logging.getLogger(__name__)
 
 
 class PPTXRenderer:

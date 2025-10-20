@@ -13,7 +13,7 @@ from fastapi import HTTPException, Request, status
 from fastapi.responses import JSONResponse
 
 from src.config.logging import get_logger
-from src.service.auth import decode_token, has_role, TokenError
+from src.services.auth_service import decode_token, has_role, TokenError
 
 logger = get_logger("security")
 
@@ -72,7 +72,10 @@ class SecurityMiddleware:
             '/api/health/',
             '/docs',
             '/redoc',
-            '/openapi.json'
+            '/openapi.json',
+            '/api/auth/login',
+            '/api/auth/register',
+            '/api/auth/refresh'
         }
 
         if not any(request.url.path.startswith(path) for path in public_paths):
@@ -122,8 +125,14 @@ class SecurityMiddleware:
             try:
                 body = await request.body()
 
-                # CSRF保护（对API请求）
-                if request.url.path.startswith("/api/"):
+                # CSRF保护（对API请求，除了认证端点）
+                csrf_exempt_paths = {
+                    '/api/auth/login',
+                    '/api/auth/register',
+                    '/api/auth/refresh'
+                }
+
+                if request.url.path.startswith("/api/") and request.url.path not in csrf_exempt_paths:
                     csrf_token = request.headers.get("X-CSRF-Token")
                     if not csrf_token or csrf_token not in self.csrf_tokens:
                         logger.warning(f"CSRF token验证失败: {request.url.path}")

@@ -13,6 +13,7 @@ from ..api.deps import require_auth, require_admin
 from ..api.errors import create_error_response, ErrorCodes, handle_database_error, handle_not_found_error, APIException
 from ..sqlmodel.models import User
 from ..core.db import get_async_session
+from ..dao import AgentConfigurationDAO
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/agent-llm-config", tags=["agent-llm-config"])
@@ -83,31 +84,28 @@ DEFAULT_AGENT_LLM_CONFIGS = {
     }
 }
 
-# 全局配置存储（实际应用中应该存储在数据库）
-_agent_llm_configs = DEFAULT_AGENT_LLM_CONFIGS.copy()
+# 默认配置现在存储在数据库中，不再使用内存存储
 
 
 # ==================== API 端点 ====================
 
 @router.get("/configs")
 async def get_all_agent_configs(
-    current_user: User = Depends(require_admin)
+    current_user: User = Depends(require_admin),
+    session: AsyncSession = Depends(get_async_session)
 ):
     """获取所有智能体的 LLM 配置"""
     try:
-        configs = []
-        for agent_id, config in _agent_llm_configs.items():
-            configs.append({
-                "agent_id": agent_id,
-                **config
-            })
-        
+        # 使用 DAO 从数据库获取配置
+        agent_dao = AgentConfigurationDAO(session)
+        configs = await agent_dao.get_all_configs_with_users()
+
         return {
             "success": True,
             "configs": configs,
             "total": len(configs)
         }
-    
+
     except Exception as e:
         logger.error(f"获取智能体配置失败: {e}")
         return handle_database_error(e)
@@ -116,20 +114,30 @@ async def get_all_agent_configs(
 @router.get("/configs/{agent_id}")
 async def get_agent_config(
     agent_id: str,
-    current_user: User = Depends(require_auth)
+    current_user: User = Depends(require_auth),
+    session: AsyncSession = Depends(get_async_session)
 ):
     """获取指定智能体的 LLM 配置"""
     try:
-        if agent_id not in _agent_llm_configs:
+        # 使用 DAO 从数据库获取配置
+        agent_dao = AgentConfigurationDAO(session)
+        config = await agent_dao.get_config_with_user(agent_id)
+
+        if not config:
             return handle_not_found_error(f"智能体 {agent_id}")
-        
-        config = _agent_llm_configs[agent_id]
+
         return {
             "success": True,
             "agent_id": agent_id,
-            **config
+            "agent_name": config["agent_name"],
+            "llm_provider": config["llm_provider"],
+            "model_name": config["model_name"],
+            "description": config["description"],
+            "is_active": config["is_active"],
+            "updated_by": config["updated_by"],
+            "updated_at": config["updated_at"]
         }
-    
+
     except HTTPException:
         raise
     except Exception as e:
@@ -141,27 +149,59 @@ async def get_agent_config(
 async def update_agent_config(
     agent_id: str,
     request: UpdateAgentLLMRequest,
-    current_user: User = Depends(require_admin)
+    current_user: User = Depends(require_admin),
+    session: AsyncSession = Depends(get_async_session)
 ):
     """更新指定智能体的 LLM 配置"""
     try:
-        if agent_id not in _agent_llm_configs:
-            return handle_not_found_error(f"智能体 {agent_id}")
-        
-        # 更新配置
-        _agent_llm_configs[agent_id]["llm_provider"] = request.llm_provider
-        if request.model_name:
-            _agent_llm_configs[agent_id]["model_name"] = request.model_name
-        
+        # 使用 DAO 更新数据库配置
+        agent_dao = AgentConfigurationDAO(session)
+
+        # 检查配置是否存在
+        existing_config = await agent_dao.get_by_agent_id(agent_id)
+        if not existing_config:
+            # 如果配置不存在，使用默认配置创建
+            if agent_id in DEFAULT_AGENT_LLM_CONFIGS:
+                default_config = DEFAULT_AGENT_LLM_CONFIGS[agent_id]
+                await agent_dao.create_or_update_config(
+                    agent_id=agent_id,
+                    agent_name=default_config["agent_name"],
+                    llm_provider=request.llm_provider,
+                    model_name=request.model_name or default_config["model_name"],
+                    description=default_config["description"],
+                    updated_by=current_user.id
+                )
+            else:
+                return handle_not_found_error(f"智能体 {agent_id}")
+        else:
+            # 更新现有配置
+            updated_config = await agent_dao.update_config(
+                agent_id=agent_id,
+                llm_provider=request.llm_provider,
+                model_name=request.model_name,
+                updated_by=current_user.id
+            )
+
+            if not updated_config:
+                return handle_not_found_error(f"智能体 {agent_id}")
+
         logger.info(f"更新智能体 {agent_id} 的 LLM 配置: {request.llm_provider}")
-        
+
+        # 获取更新后的配置
+        config = await agent_dao.get_config_with_user(agent_id)
+
         return {
             "success": True,
             "message": f"智能体 {agent_id} 的 LLM 配置已更新",
             "agent_id": agent_id,
-            **_agent_llm_configs[agent_id]
+            "agent_name": config["agent_name"],
+            "llm_provider": config["llm_provider"],
+            "model_name": config["model_name"],
+            "description": config["description"],
+            "is_active": config["is_active"],
+            "updated_at": config["updated_at"]
         }
-    
+
     except HTTPException:
         raise
     except Exception as e:

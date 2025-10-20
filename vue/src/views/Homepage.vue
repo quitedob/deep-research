@@ -17,7 +17,7 @@
       <div class="nav-container">
         <div class="nav-brand">
           <div class="logo">
-            <div class="logo-icon">🔬</div>
+            <img src="@/assets/logo.svg" alt="Deep Research" class="logo-icon">
             <span class="logo-text">Deep Research</span>
           </div>
         </div>
@@ -114,7 +114,7 @@
         <div class="footer-content">
           <div class="footer-brand">
             <div class="logo">
-              <div class="logo-icon">🔬</div>
+              <img src="@/assets/logo.svg" alt="Deep Research" class="logo-icon">
               <span class="logo-text">Deep Research</span>
             </div>
             <p class="footer-description">专业的AI研究分析平台</p>
@@ -313,6 +313,7 @@ onMounted(() => {
   min-height: 100vh;
   position: relative;
   overflow-x: hidden;
+  overflow-y: auto;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: #333;
@@ -450,7 +451,8 @@ onMounted(() => {
 }
 
 .logo-icon {
-  font-size: 2rem;
+  height: 32px;
+  width: 32px;
   animation: pulse 2s infinite;
 }
 
@@ -508,6 +510,23 @@ onMounted(() => {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-primary::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s;
+}
+
+.btn-primary:hover::before {
+  left: 100%;
 }
 
 .btn-primary:hover {
@@ -544,6 +563,7 @@ onMounted(() => {
   margin-top: 80px;
   position: relative;
   z-index: 1;
+  min-height: calc(100vh - 80px);
 }
 
 .content-container {
@@ -555,7 +575,7 @@ onMounted(() => {
 /* Hero 区域 */
 .hero-section {
   text-align: center;
-  padding: 4rem 0;
+  padding: 6rem 0 4rem 0;
 }
 
 .hero-title {
@@ -570,6 +590,12 @@ onMounted(() => {
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+  animation: gradient-shift 3s ease-in-out infinite;
+}
+
+@keyframes gradient-shift {
+  0%, 100% { filter: hue-rotate(0deg); }
+  50% { filter: hue-rotate(10deg); }
 }
 
 .highlight-text {
@@ -802,6 +828,11 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+.footer-brand .logo-icon {
+  height: 24px;
+  width: 24px;
 }
 
 .footer-description {

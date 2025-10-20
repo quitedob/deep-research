@@ -2,7 +2,7 @@
   <div class="auth-page">
     <div class="auth-card">
       <div class="auth-header">
-        <img src="https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_92x30dp.png" alt="Google" class="logo">
+        <img src="@/assets/logo.svg" alt="Deep Research" class="logo">
         <h2 class="title">创建您的 Deep Research 帐户</h2>
       </div>
       <form @submit.prevent="doRegister" class="form" novalidate>
@@ -13,10 +13,11 @@
             id="username"
             autocomplete="username"
             required
+            placeholder="请输入账号"
             @blur="touched.username = true"
             :class="{ invalid: usernameError && touched.username }"
           />
-          <label for="username">账号 / Account</label>
+          <label for="username">账号</label>
           <p v-if="usernameError && touched.username" class="error">{{ usernameError }}</p>
         </div>
 
@@ -27,10 +28,11 @@
             id="password"
             autocomplete="new-password"
             required
+            placeholder="请输入密码"
             @blur="touched.password = true"
             :class="{ invalid: passwordError && touched.password }"
           />
-          <label for="password">密码 / Password</label>
+          <label for="password">密码</label>
           <p v-if="passwordError && touched.password" class="error">{{ passwordError }}</p>
         </div>
 
@@ -40,10 +42,11 @@
             type="tel"
             id="phone"
             autocomplete="tel"
+            placeholder="请输入手机号(可选)"
             @blur="touched.phone = true"
             :class="{ invalid: phoneError && touched.phone }"
           />
-          <label for="phone">手机号 / Phone (可选)</label>
+          <label for="phone">手机号</label>
           <p v-if="phoneError && touched.phone" class="error">{{ phoneError }}</p>
         </div>
 
@@ -53,16 +56,17 @@
             type="email"
             id="email"
             autocomplete="email"
+            placeholder="请输入邮箱(可选)"
             @blur="touched.email = true"
             :class="{ invalid: emailError && touched.email }"
           />
-          <label for="email">邮箱 / Email (可选)</label>
+          <label for="email">邮箱</label>
           <p v-if="emailError && touched.email" class="error">{{ emailError }}</p>
         </div>
 
         <label class="remember">
           <input type="checkbox" v-model="rememberMe" />
-          <span>记住我 / Remember me</span>
+          <span>记住我</span>
         </label>
 
         <div class="footer-actions">
@@ -137,8 +141,7 @@ const doRegister = async () => {
     const userData = {
       username: username.value,
       password: password.value,
-      email: email.value || null,
-      phone: phone.value || null
+      email: email.value || null
     };
 
     const data = await registerUser(userData);

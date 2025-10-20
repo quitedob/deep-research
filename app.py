@@ -5,6 +5,7 @@
 
 import os
 from pathlib import Path
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
@@ -29,14 +30,14 @@ from src.api.health import router as health_router
 # from src.core.ppt.api.routes import router as ppt_router  # Module doesn't exist
 # Temporarily disabled due to missing modules
 # from src.api.agents import router as agents_router
-# from src.api.admin import router as admin_router
+from src.api.admin import router as admin_router
 # from src.api.llm_provider import router as llm_provider_router
 # from src.api.search import router as search_router
 # from src.api.agent_llm_config import router as agent_llm_config_router
 from src.api.ppt import router as ppt_router
 # from src.api.ocr import router as ocr_router
 # from src.api.file_upload import router as file_upload_router
-# from src.api.quota import router as quota_router
+from src.api.quota import router as quota_router
 from src.middleware.monitoring import request_monitoring_middleware
 from src.middleware.security import security_middleware_func
 from src.config.config_loader import get_settings
@@ -44,12 +45,68 @@ from src.config.logging import setup_logging
 
 settings = get_settings()
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """应用生命周期管理"""
+    # 启动时执行
+    # 连接缓存（无 Redis 自动回退内存）
+    await cache.connect()
+
+    # 初始化数据库并建表（智能初始化）
+    if settings.auto_create_tables:
+        from src.core.db_init import initialize_database
+        success = await initialize_database(force_recreate=False)
+        if not success:
+            raise RuntimeError("数据库初始化失败")
+
+    # 创建必要的目录
+    _create_directories()
+
+    # 初始化RAG功能
+    try:
+        from src.core.rag.config import initialize_rag_directories
+        initialize_rag_directories()
+        print("RAG功能初始化成功")
+    except Exception as e:
+        print(f"RAG功能初始化失败: {e}")
+
+    # 启动任务工作器
+    try:
+        from src.tasks.worker import start_task_worker
+        await start_task_worker(worker_count=2, concurrency=1)
+        print("任务工作器已启动")
+    except Exception as e:
+        print(f"启动任务工作器失败: {e}")
+
+    print(f"应用启动成功：{settings.app_name} v{settings.app_version}")
+    print(f"环境：{settings.environment}")
+    print(f"调试模式：{settings.debug}")
+    print(f"LLM提供商：{settings.llm_provider}")
+
+    yield  # 应用运行期间
+
+    # 关闭时执行
+    # 停止任务工作器
+    try:
+        from src.tasks.worker import stop_task_worker
+        await stop_task_worker()
+        print("任务工作器已停止")
+    except Exception as e:
+        print(f"停止任务工作器失败: {e}")
+
+    # 断开缓存连接
+    await cache.disconnect()
+    print("应用已关闭")
+
+
 def create_app() -> FastAPI:
     """创建 FastAPI 应用并注册中间件与路由。"""
     app = FastAPI(
         title=settings.app_name,
         version=settings.app_version,
-        debug=settings.debug
+        debug=settings.debug,
+        lifespan=lifespan
     )
 
     # 初始化日志系统
@@ -117,66 +174,20 @@ def create_app() -> FastAPI:
     # 注册 PPT 生成路由（新位置）
     app.include_router(ppt_router, prefix="/api")
 
+    # 注册管理员路由
+    app.include_router(admin_router, prefix="/api")
+
+    # 注册配额路由
+    app.include_router(quota_router, prefix="/api")
+
     # Temporarily disabled routers due to missing modules
     # app.include_router(agents_router, prefix="/api")
-    # app.include_router(admin_router, prefix="/api")
     # app.include_router(llm_provider_router, prefix="/api")
     # app.include_router(search_router, prefix="/api")
     # app.include_router(agent_llm_config_router, prefix="/api")
     # app.include_router(ocr_router, prefix="/api")
     # app.include_router(file_upload_router, prefix="/api")
-    # app.include_router(quota_router, prefix="/api")
-    
-    @app.on_event("startup")
-    async def _startup():
-        # 连接缓存（无 Redis 自动回退内存）
-        await cache.connect()
-        
-        # 初始化数据库并建表（智能初始化）
-        if settings.auto_create_tables:
-            from src.core.db_init import initialize_database
-            success = await initialize_database(force_recreate=False)
-            if not success:
-                raise RuntimeError("数据库初始化失败")
-        
-        # 创建必要的目录
-        _create_directories()
-        
-        # 初始化RAG功能
-        try:
-            from src.core.rag.config import initialize_rag_directories
-            initialize_rag_directories()
-            print("RAG功能初始化成功")
-        except Exception as e:
-            print(f"RAG功能初始化失败: {e}")
-        
-        # 启动任务工作器
-        try:
-            from src.tasks.worker import start_task_worker
-            await start_task_worker(worker_count=2, concurrency=1)
-            print("任务工作器已启动")
-        except Exception as e:
-            print(f"启动任务工作器失败: {e}")
-        
-        print(f"应用启动成功：{settings.app_name} v{settings.app_version}")
-        print(f"环境：{settings.environment}")
-        print(f"调试模式：{settings.debug}")
-        print(f"LLM提供商：{settings.llm_provider}")
-    
-    @app.on_event("shutdown")
-    async def _shutdown():
-        # 停止任务工作器
-        try:
-            from src.tasks.worker import stop_task_worker
-            await stop_task_worker()
-            print("任务工作器已停止")
-        except Exception as e:
-            print(f"停止任务工作器失败: {e}")
-        
-        # 断开缓存连接
-        await cache.disconnect()
-        print("应用已关闭")
-    
+
     return app
 
 

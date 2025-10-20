@@ -10,8 +10,8 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.db import get_db_session
-from src.service.auth import decode_token
-from src.service.quota import QuotaService
+from src.services.auth import decode_token
+from src.services.quota import QuotaService
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")

@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.db import get_db_session
 from src.dao.users import UsersDAO
-from src.service.auth import hash_password, verify_password, create_access_token, decode_token
+from src.services.auth import hash_password, verify_password, create_access_token, decode_token
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])

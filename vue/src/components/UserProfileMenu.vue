@@ -1,11 +1,22 @@
 <template>
   <div class="user-profile-menu" ref="menuRef">
-    <div class="avatar" @click="toggleMenu">U</div>
+    <div class="avatar" @click="toggleMenu">{{ userInitial }}</div>
     <div v-if="isMenuOpen" class="menu-dropdown">
-      <div class="menu-header">用户</div>
+      <div class="menu-header">{{ displayName }}</div>
       <div class="menu-items">
         <a href="#" class="menu-item">我的订阅</a>
         <a href="#" class="menu-item" @click.prevent="openSettings">设置</a>
+
+        <!-- 管理员专用功能 -->
+        <router-link
+          v-if="isAdmin"
+          to="/admin"
+          class="menu-item admin-link"
+          @click="isMenuOpen = false"
+        >
+          <i class="icon-dashboard"></i>
+          管理控制台
+        </router-link>
 
         <div class="menu-item theme-toggle" @click="onToggleTheme">
           <span>{{ currentTheme === 'dark' ? '亮色模式' : '暗色模式' }}</span>
@@ -19,7 +30,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useChatStore } from '@/store'; // 1. 引入 useChatStore
 
@@ -29,6 +40,30 @@ const router = useRouter();
 const isMenuOpen = ref(false);
 const menuRef = ref(null);
 const chatStore = useChatStore(); // 2. 获取 store 实例
+
+// 计算用户信息和管理员权限
+const currentUser = computed(() => {
+  try {
+    const userStr = localStorage.getItem('user') || sessionStorage.getItem('user');
+    return userStr ? JSON.parse(userStr) : null;
+  } catch (error) {
+    console.error('[UserProfileMenu] 解析用户信息失败:', error);
+    return null;
+  }
+});
+
+const isAdmin = computed(() => {
+  return currentUser.value?.role === 'admin';
+});
+
+const userInitial = computed(() => {
+  const username = currentUser.value?.username || 'U';
+  return username.charAt(0).toUpperCase();
+});
+
+const displayName = computed(() => {
+  return currentUser.value?.username || '用户';
+});
 
 const toggleMenu = () => { isMenuOpen.value = !isMenuOpen.value; };
 const onToggleTheme = () => { emit('toggle-theme'); };
@@ -142,6 +177,14 @@ onUnmounted(() => document.removeEventListener('mousedown', handleClickOutside))
   height: 1px;
   background-color: var(--border-color);
   margin: 8px 0;
+}
+
+.admin-link {
+  color: #8ab4f8;
+  font-weight: 500;
+}
+.admin-link:hover {
+  background-color: rgba(138, 180, 248, 0.1);
 }
 
 .logout {

@@ -29,6 +29,57 @@ class Base(DeclarativeBase):
     pass
 
 
+class AgentConfiguration(Base):
+    """智能体 LLM 配置模型"""
+    __tablename__ = "agent_configurations"
+
+    id: Mapped[str] = mapped_column(
+        String(36),
+        primary_key=True,
+        default=lambda: str(uuid.uuid4())
+    )
+    agent_id: Mapped[str] = mapped_column(
+        String(100),
+        unique=True,
+        index=True,
+        nullable=False
+    )
+    agent_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    llm_provider: Mapped[str] = mapped_column(
+        Enum('doubao', 'kimi', 'deepseek', 'ollama', 'zhipuai', name='llm_provider'),
+        nullable=False
+    )
+    model_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=func.now(),
+        nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=func.now(),
+        onupdate=func.now(),
+        nullable=False
+    )
+    updated_by: Mapped[Optional[str]] = mapped_column(
+        String(36),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True
+    )
+
+    # 关系定义
+    updated_by_user: Mapped[Optional["User"]] = relationship(
+        foreign_keys=[updated_by],
+        back_populates="updated_agent_configs"
+    )
+
+    __table_args__ = (
+        UniqueConstraint("agent_id", name="uq_agent_config_agent_id"),
+    )
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -55,12 +106,20 @@ class User(Base):
 
     # 关系定义
     subscriptions: Mapped[list[Subscription]] = relationship(
-        back_populates="user", 
+        back_populates="user",
         cascade="all, delete-orphan"
     )
     api_usage_logs: Mapped[list[ApiUsageLog]] = relationship(
-        back_populates="user", 
+        back_populates="user",
         cascade="all, delete-orphan"
+    )
+    conversation_sessions: Mapped[list[ConversationSession]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
+    updated_agent_configs: Mapped[list[AgentConfiguration]] = relationship(
+        foreign_keys=[AgentConfiguration.updated_by],
+        back_populates="updated_by_user"
     )
 
 
@@ -138,6 +197,7 @@ class ApiUsageLog(Base):
 
 
 # DocumentProcessingJob 已移至 rag_models.py
+
 
 
 class ConversationSession(Base):

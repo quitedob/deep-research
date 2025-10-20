@@ -130,11 +130,18 @@ router.beforeEach((to) => {
     if (to.path === '/') {
         console.log('[Router] 处理根地址访问');
 
-        // 如果用户已登录，直接重定向到主页
+        // 如果用户已登录
         if (token) {
             try {
                 const userStr = localStorage.getItem('user') || sessionStorage.getItem('user');
                 const user = userStr ? JSON.parse(userStr) : null;
+
+                // 检查是否需要完成欢迎流程
+                if (!hasCompletedWelcome) {
+                    console.log('[Router] 新用户重定向到欢迎页面');
+                    return { path: '/welcome' };
+                }
+
                 console.log('[Router] 已登录用户，重定向到主页');
                 return { path: '/home' };
             } catch (error) {
@@ -149,7 +156,7 @@ router.beforeEach((to) => {
     }
 
     // 公开页面 - 无需认证即可访问
-    const publicPaths = ['/homepage', '/welcome', '/login', '/register', '/help', '/policies'];
+    const publicPaths = ['/', '/welcome', '/login', '/register', '/help', '/policies'];
     if (publicPaths.includes(to.path)) {
         console.log('[Router] 公开页面，允许访问');
 
@@ -172,6 +179,18 @@ router.beforeEach((to) => {
     if (!token) {
         console.log('[Router] 需要认证但未找到token，重定向到登录页');
         return { path: '/login', query: { redirect: to.fullPath } };
+    }
+
+    // 欢迎流程检查：新用户首次登录后应先完成欢迎流程
+    if (token && !hasCompletedWelcome && to.path !== '/welcome') {
+        console.log('[Router] 新用户未完成欢迎流程，重定向到欢迎页面');
+        return { path: '/welcome' };
+    }
+
+    // 主页特殊处理：确保欢迎流程逻辑正确执行
+    if (to.path === '/home' && token && !hasCompletedWelcome) {
+        console.log('[Router] 访问主页但未完成欢迎流程，重定向到欢迎页面');
+        return { path: '/welcome' };
     }
 
     // 管理员专属页面

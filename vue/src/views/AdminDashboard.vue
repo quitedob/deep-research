@@ -1,5 +1,5 @@
 <template>
-  <div class="admin-dashboard">
+  <div v-if="isAuthorized" class="admin-dashboard">
     <div class="header">
       <h1>管理员控制台</h1>
       <p class="subtitle">系统管理和用户监控</p>
@@ -263,6 +263,16 @@
       {{ notification.message }}
     </div>
   </div>
+
+  <!-- 未授权访问状态 -->
+  <div v-else class="unauthorized-container">
+    <div class="unauthorized-message">
+      <h2>🚫 访问被拒绝</h2>
+      <p>您没有权限访问管理控制台。</p>
+      <p>此功能仅限管理员使用。</p>
+      <button @click="goBack" class="btn-back">返回</button>
+    </div>
+  </div>
 </template>
 
 <script>
@@ -302,7 +312,25 @@ export default {
       notification: null
     };
   },
+  computed: {
+    isAuthorized() {
+      try {
+        const userStr = localStorage.getItem('user') || sessionStorage.getItem('user');
+        const user = userStr ? JSON.parse(userStr) : null;
+        return user?.role === 'admin';
+      } catch (error) {
+        console.error('[AdminDashboard] 解析用户信息失败:', error);
+        return false;
+      }
+    }
+  },
   async mounted() {
+    // 首先检查权限
+    if (!this.isAuthorized) {
+      console.warn('[AdminDashboard] 非管理员用户尝试访问管理控制台');
+      return;
+    }
+
     await this.loadStats();
     await this.loadUsers();
   },
@@ -435,6 +463,10 @@ export default {
       setTimeout(() => {
         this.notification = null;
       }, 3000);
+    },
+
+    goBack() {
+      this.$router.push('/home');
     }
   },
   watch: {
@@ -753,6 +785,52 @@ export default {
   background: #f8d7da;
   color: #721c24;
   border: 1px solid #f5c6cb;
+}
+
+/* 未授权状态 */
+.unauthorized-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 60vh;
+  padding: 20px;
+}
+
+.unauthorized-message {
+  text-align: center;
+  background: white;
+  padding: 40px;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+  max-width: 400px;
+}
+
+.unauthorized-message h2 {
+  color: #dc3545;
+  margin-bottom: 16px;
+  font-size: 24px;
+}
+
+.unauthorized-message p {
+  color: #666;
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+
+.btn-back {
+  margin-top: 20px;
+  padding: 12px 24px;
+  background: #007bff;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s;
+}
+
+.btn-back:hover {
+  background: #0056b3;
 }
 
 @keyframes slideIn {
