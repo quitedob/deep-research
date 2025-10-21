@@ -9,7 +9,7 @@ from typing import Callable
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
 
-from src.config.logging import (
+from src.config.logging.logging import (
     get_logger,
     set_request_context,
     get_performance_monitor,
@@ -234,7 +234,7 @@ async def get_health_status():
     # 检查Redis连接
     try:
         import redis.asyncio as redis
-        from src.config.config_loader import get_settings
+        from src.config.loader.config_loader import get_settings
         settings = get_settings()
         r = redis.from_url(settings.redis_url)
         await r.ping()

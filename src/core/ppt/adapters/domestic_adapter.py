@@ -263,3 +263,4 @@ def get_domestic_adapter() -> DomesticAdapter:
     if _domestic_adapter is None:
         _domestic_adapter = DomesticAdapter()
     return _domestic_adapter
+

@@ -246,3 +246,4 @@ class DeepSeekAdapter:
         output_cost = (output_tokens / 1_000_000) * price_info["output"]
 
         return input_cost + output_cost
+

@@ -12,7 +12,7 @@ from collections import defaultdict
 from fastapi import HTTPException, Request, status
 from fastapi.responses import JSONResponse
 
-from src.config.logging import get_logger
+from src.config.logging.logging import get_logger
 from src.services.auth_service import decode_token, has_role, TokenError
 
 logger = get_logger("security")

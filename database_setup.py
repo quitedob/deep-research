@@ -17,7 +17,7 @@ sys.path.insert(0, str(project_root))
 import asyncpg
 import psycopg2
 from sqlalchemy import text
-from src.config.config_loader import get_settings
+from src.config.loader.config_loader import get_settings
 from src.core.db import db_manager
 from src.sqlmodel.models import Base
 from src.sqlmodel import rag_models

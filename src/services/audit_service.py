@@ -13,7 +13,7 @@ from sqlalchemy import select, func
 
 from .base_service import BaseService
 from src.sqlmodel.models import AdminAuditLog, User
-from src.config.logging import get_logger
+from src.config.logging.logging import get_logger
 
 logger = get_logger("audit")
 

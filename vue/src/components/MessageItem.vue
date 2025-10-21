@@ -297,6 +297,7 @@
 <script setup>
 import { computed, ref, nextTick, onMounted } from 'vue';
 import markdownit from 'markdown-it';
+import { feedbackAPI } from '@/services/api.js';
 import hljs from 'highlight.js';
 import EvidenceChain from '@/components/EvidenceChain.vue';
 
@@ -400,33 +401,21 @@ const submitFeedback = async (rating) => {
 
     // 如果已经提交了相同的反馈，则取消反馈
     if (localFeedback.value === rating) {
-      await deleteFeedback();
+      await feedbackAPI.deleteFeedback(props.message.id);
       localFeedback.value = null;
       return;
     }
 
     // 提交反馈
-    const response = await fetch('/api/feedback/submit', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      },
-      body: JSON.stringify({
-        message_id: props.message.id,
-        rating: rating,
-        feedback_type: 'helpfulness'
-      })
-    });
+    const result = await feedbackAPI.submitFeedback(
+      props.message.id,
+      rating,
+      null, // comment
+      'helpfulness', // feedback_type
+      null // context
+    );
 
-    if (!response.ok) {
-      throw new Error('提交反馈失败');
-    }
-
-    const result = await response.json();
     localFeedback.value = rating;
-
-    // 可选：显示成功提示
     console.log('反馈提交成功:', result);
 
   } catch (error) {
@@ -437,48 +426,60 @@ const submitFeedback = async (rating) => {
   }
 };
 
-// 删除反馈方法
+// 删除反馈方法（现在由submitFeedback处理）
+// 保留这个方法是为了兼容性，但实际不再使用
 const deleteFeedback = async () => {
-  try {
-    const response = await fetch(`/api/feedback/message/${props.message.id}`, {
-      method: 'DELETE',
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      }
-    });
-
-    if (!response.ok) {
-      console.warn('删除反馈失败，但继续更新本地状态');
-    }
-  } catch (error) {
-    console.warn('删除反馈请求失败，但继续更新本地状态:', error);
-  }
+  // 这个方法现在由submitFeedback内部调用feedbackAPI处理
 };
 
 // 初始化时加载已有的反馈状态
 const loadExistingFeedback = async () => {
   try {
-    const response = await fetch(`/api/feedback/message/${props.message.id}`, {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      }
-    });
+    const data = await feedbackAPI.getMessageFeedback(props.message.id);
 
-    if (response.ok) {
-      const data = await response.json();
-      // API 返回当前用户的反馈信息
-      if (data.total_feedbacks > 0) {
-        // 如果有正面反馈，设置为点赞；如果有负面反馈，设置为点踩
+    // API 返回当前用户的反馈信息
+    if (data.total_feedbacks > 0) {
+      // 检查是否有当前用户的反馈
+      if (data.feedbacks && data.feedbacks.length > 0) {
+        // 找到当前用户的反馈（API应该返回当前用户的反馈在最前面）
+        const userFeedback = data.feedbacks.find(f => f.user_id === getCurrentUserId());
+        if (userFeedback) {
+          localFeedback.value = userFeedback.rating;
+        } else {
+          // 如果找不到当前用户的反馈，使用第一个反馈作为默认
+          localFeedback.value = data.feedbacks[0].rating;
+        }
+      } else {
+        // 兼容旧格式：如果有正面反馈，设置为点赞；如果有负面反馈，设置为点踩
         if (data.positive_feedbacks > 0) {
           localFeedback.value = 1;
         } else if (data.negative_feedbacks > 0) {
           localFeedback.value = -1;
+        } else {
+          localFeedback.value = null;
         }
       }
+    } else {
+      localFeedback.value = null;
     }
   } catch (error) {
     console.warn('加载已有反馈失败:', error);
+    localFeedback.value = null;
   }
+};
+
+// 获取当前用户ID的辅助函数
+const getCurrentUserId = () => {
+  const userStr = localStorage.getItem('user') || sessionStorage.getItem('user');
+  if (userStr) {
+    try {
+      const user = JSON.parse(userStr);
+      return user.id;
+    } catch (e) {
+      console.warn('解析用户信息失败:', e);
+    }
+  }
+  return null;
 };
 
 // 组件挂载时加载已有反馈

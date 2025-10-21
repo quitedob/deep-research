@@ -25,7 +25,22 @@ async function getCSRFToken() {
 
 // 通用请求函数
 async function apiRequest(endpoint, options = {}) {
-  const url = `${API_BASE_URL}${endpoint}`;
+  // 处理查询参数
+  let url = `${API_BASE_URL}${endpoint}`;
+  if (options.params) {
+    const searchParams = new URLSearchParams();
+    Object.entries(options.params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        searchParams.append(key, value);
+      }
+    });
+    const paramString = searchParams.toString();
+    if (paramString) {
+      url += (endpoint.includes('?') ? '&' : '?') + paramString;
+    }
+    delete options.params; // 从options中移除params
+  }
+
   console.log('[API] 请求开始', { endpoint, method: options.method || 'GET', url });
 
   const defaultOptions = {
@@ -96,6 +111,147 @@ async function apiRequest(endpoint, options = {}) {
   }
 }
 
+// 研究相关API
+export const researchAPI = {
+  // 开始研究任务
+  startResearch: async (query, sessionId = null) => {
+    try {
+      console.log('[ResearchAPI] 开始研究任务:', { query, sessionId });
+      const result = await apiRequest('/research', {
+        method: 'POST',
+        body: JSON.stringify({
+          query: query,
+          session_id: sessionId
+        })
+      });
+      console.log('[ResearchAPI] 研究任务创建成功:', { sessionId: result.session_id, status: result.status });
+      return result;
+    } catch (error) {
+      console.error('[ResearchAPI] 研究任务创建失败:', error);
+      throw error;
+    }
+  },
+
+  // 获取研究报告
+  getReport: async (sessionId) => {
+    return await apiRequest(`/research/${sessionId}`);
+  },
+
+  // 获取研究流进度
+  getStream: async (sessionId) => {
+    const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
+    const url = `${API_BASE_URL}/research/stream/${sessionId}`;
+
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      credentials: 'include'
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    return response;
+  }
+};
+
+// 文档相关API
+export const documentAPI = {
+  // 上传文件
+  uploadFile: async (file) => {
+    try {
+      const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
+      const formData = new FormData();
+      formData.append('file', file);
+
+      console.log('[DocumentAPI] 开始上传文件:', { filename: file.name, size: file.size });
+
+      const response = await fetch(`${API_BASE_URL}/files/upload`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        body: formData,
+        credentials: 'include'
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.detail || `HTTP ${response.status}: ${response.statusText}`;
+        console.error('[DocumentAPI] 文件上传失败:', { status: response.status, error: errorMessage });
+        throw new Error(errorMessage);
+      }
+
+      const result = await response.json();
+      console.log('[DocumentAPI] 文件上传成功:', { fileId: result.file_id, status: result.status });
+      return result;
+    } catch (error) {
+      console.error('[DocumentAPI] 文件上传异常:', error);
+      throw error;
+    }
+  },
+
+  // 获取文件状态
+  getFileStatus: async (fileId) => {
+    return await apiRequest(`/files/${fileId}/status`);
+  },
+
+  // 获取文件列表
+  getFiles: async (skip = 0, limit = 50) => {
+    return await apiRequest('/files/list', {
+      params: { skip, limit }
+    });
+  },
+
+  // 删除文件
+  deleteFile: async (fileId) => {
+    return await apiRequest(`/files/${fileId}`, {
+      method: 'DELETE'
+    });
+  }
+};
+
+// 反馈相关API
+export const feedbackAPI = {
+  // 提交反馈
+  submitFeedback: async (messageId, rating, comment = null, feedbackType = null, context = null) => {
+    return await apiRequest('/feedback/submit', {
+      method: 'POST',
+      body: JSON.stringify({
+        message_id: messageId,
+        rating: rating,
+        comment: comment,
+        feedback_type: feedbackType,
+        context: context
+      })
+    });
+  },
+
+  // 获取消息反馈
+  getMessageFeedback: async (messageId) => {
+    return await apiRequest(`/feedback/message/${messageId}`);
+  },
+
+  // 获取用户反馈统计
+  getUserStats: async () => {
+    return await apiRequest('/feedback/user/stats');
+  },
+
+  // 获取全局反馈统计（管理员）
+  getGlobalStats: async () => {
+    return await apiRequest('/feedback/global/stats');
+  },
+
+  // 删除反馈
+  deleteFeedback: async (messageId) => {
+    return await apiRequest(`/feedback/message/${messageId}`, {
+      method: 'DELETE'
+    });
+  }
+};
+
 // 认证相关API
 export const authAPI = {
   // 用户登录
@@ -153,6 +309,100 @@ export const chatAPI = {
     method: 'POST',
     body: JSON.stringify({ title }),
   }),
+};
+
+// 内容审核相关API
+export const moderationAPI = {
+  // 获取审核队列
+  getModerationQueue: (status = 'pending', page = 1, pageSize = 20) => {
+    return apiRequest('/admin/moderation/queue', {
+      params: { status, page, page_size: pageSize }
+    });
+  },
+
+  // 审核内容（批准/拒绝）
+  moderateContent: (queueId, action, reason = '') => {
+    return apiRequest(`/admin/moderation/${queueId}/review`, {
+      method: 'POST',
+      body: JSON.stringify({
+        action: action, // 'approve' or 'reject'
+        reason: reason
+      })
+    });
+  },
+
+  // 批量审核
+  batchModerate: (queueIds, action, reason = '') => {
+    return apiRequest('/admin/moderation/batch-review', {
+      method: 'POST',
+      body: JSON.stringify({
+        queue_ids: queueIds,
+        action: action,
+        reason: reason
+      })
+    });
+  },
+
+  // 获取审核统计
+  getModerationStats: () => {
+    return apiRequest('/admin/moderation/stats');
+  },
+
+  // 获取审核历史
+  getModerationHistory: (page = 1, pageSize = 20) => {
+    return apiRequest('/admin/moderation/history', {
+      params: { page, page_size: pageSize }
+    });
+  }
+};
+
+// 智能体配置相关API
+export const agentConfigAPI = {
+  // 获取所有智能体配置
+  getAgentConfigs: () => {
+    return apiRequest('/agent-llm-config/all');
+  },
+
+  // 获取特定智能体配置
+  getAgentConfig: (agentId) => {
+    return apiRequest(`/agent-llm-config/${agentId}`);
+  },
+
+  // 更新智能体配置
+  updateAgentConfig: (agentId, config) => {
+    return apiRequest(`/agent-llm-config/${agentId}`, {
+      method: 'PUT',
+      body: JSON.stringify(config)
+    });
+  },
+
+  // 批量更新智能体配置
+  batchUpdateConfigs: (configs) => {
+    return apiRequest('/agent-llm-config/batch-update', {
+      method: 'PUT',
+      body: JSON.stringify({ configs })
+    });
+  },
+
+  // 重置为默认配置
+  resetToDefaults: () => {
+    return apiRequest('/agent-llm-config/reset-to-defaults', {
+      method: 'POST'
+    });
+  },
+
+  // 测试智能体配置
+  testAgentConfig: (agentId, prompt) => {
+    return apiRequest(`/agent-llm-config/${agentId}/test`, {
+      method: 'POST',
+      body: JSON.stringify({ prompt })
+    });
+  },
+
+  // 获取可用的LLM提供商和模型
+  getAvailableModels: () => {
+    return apiRequest('/agent-llm-config/available-models');
+  }
 };
 
 // LLM配置相关API
@@ -659,6 +909,18 @@ export const documentAnalysisAPI = {
   }),
 };
 
+// LLM提供商相关API
+export const llmProviderAPI = {
+  // 获取当前搜索提供商
+  getCurrentProvider: () => apiRequest('/llm-provider/current'),
+
+  // 设置默认搜索提供商
+  setDefaultProvider: (providerId) => apiRequest('/llm-provider/set-default', {
+    method: 'POST',
+    body: JSON.stringify({ provider_id: providerId }),
+  }),
+};
+
 // 监控面板相关API
 export const monitoringAPI = {
   // 获取系统概览
@@ -906,4 +1168,5 @@ export default {
   contentModeration: contentModerationAPI,
   search: searchAPI,
   ocr: ocrAPI,
+  llmProvider: llmProviderAPI,
 };

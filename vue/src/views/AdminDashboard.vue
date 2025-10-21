@@ -224,6 +224,188 @@
       </div>
     </div>
 
+    <!-- 内容审核 -->
+    <div v-if="currentTab === 'moderation'" class="tab-content">
+      <div class="section-header">
+        <h2>内容审核</h2>
+        <div class="moderation-filters">
+          <select v-model="moderationFilter" @change="loadModerationQueue">
+            <option value="pending">待审核</option>
+            <option value="approved">已批准</option>
+            <option value="rejected">已拒绝</option>
+            <option value="all">全部</option>
+          </select>
+          <button
+            v-if="selectedModerationItems.length > 0"
+            @click="showBatchModal = true"
+            class="btn-primary"
+          >
+            批量审核 ({{ selectedModerationItems.length }})
+          </button>
+          <button @click="loadModerationQueue" :disabled="moderationLoading" class="btn-secondary">
+            🔄 刷新
+          </button>
+        </div>
+      </div>
+
+      <!-- 审核统计卡片 -->
+      <div class="moderation-stats">
+        <div class="stat-card">
+          <div class="stat-icon">⏳</div>
+          <div class="stat-content">
+            <div class="stat-value">{{ moderationStats.pending }}</div>
+            <div class="stat-label">待审核</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">✅</div>
+          <div class="stat-content">
+            <div class="stat-value">{{ moderationStats.approved }}</div>
+            <div class="stat-label">已批准</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">❌</div>
+          <div class="stat-content">
+            <div class="stat-value">{{ moderationStats.rejected }}</div>
+            <div class="stat-label">已拒绝</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">📊</div>
+          <div class="stat-content">
+            <div class="stat-value">{{ moderationStats.total }}</div>
+            <div class="stat-label">总计</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 审核队列列表 -->
+      <div v-if="moderationQueue.length > 0" class="moderation-queue">
+        <div class="queue-table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>
+                  <input
+                    type="checkbox"
+                    @change="toggleSelectAll"
+                    :checked="allSelected"
+                  />
+                </th>
+                <th>内容类型</th>
+                <th>用户</th>
+                <th>内容预览</th>
+                <th>风险等级</th>
+                <th>创建时间</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="item in moderationQueue"
+                :key="item.id"
+                :class="{ 'selected': selectedModerationItems.includes(item.id) }"
+              >
+                <td>
+                  <input
+                    type="checkbox"
+                    :value="item.id"
+                    v-model="selectedModerationItems"
+                  />
+                </td>
+                <td>
+                  <span :class="['badge', `badge-${item.content_type}`]">
+                    {{ getContentTypeLabel(item.content_type) }}
+                  </span>
+                </td>
+                <td>{{ item.user_id }}</td>
+                <td class="content-preview">
+                  <div class="preview-text">{{ item.content_preview }}</div>
+                </td>
+                <td>
+                  <span :class="['risk-badge', `risk-${item.risk_level}`]">
+                    {{ getRiskLevelLabel(item.risk_level) }}
+                  </span>
+                </td>
+                <td>{{ formatDate(item.created_at) }}</td>
+                <td>
+                  <div class="action-buttons">
+                    <button
+                      @click="moderateItem(item.id, 'approve')"
+                      class="btn-approve"
+                      :disabled="moderationLoading"
+                    >
+                      ✅ 批准
+                    </button>
+                    <button
+                      @click="showRejectModal(item)"
+                      class="btn-reject"
+                      :disabled="moderationLoading"
+                    >
+                      ❌ 拒绝
+                    </button>
+                    <button
+                      @click="viewItemDetail(item)"
+                      class="btn-view"
+                    >
+                      👁 查看
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div v-else class="empty-state">
+        <p>暂无审核内容</p>
+      </div>
+
+      <!-- 批量审核模态框 -->
+      <div v-if="showBatchModal" class="modal-overlay" @click="showBatchModal = false">
+        <div class="modal-content" @click.stop>
+          <div class="modal-header">
+            <h3>批量审核</h3>
+            <button @click="showBatchModal = false" class="btn-close">×</button>
+          </div>
+          <div class="modal-body">
+            <div class="batch-info">
+              <p>已选择 <strong>{{ selectedModerationItems.length }}</strong> 项内容进行批量审核</p>
+            </div>
+            <div class="form-group">
+              <label>审核原因（可选）:</label>
+              <textarea
+                v-model="batchModerationReason"
+                placeholder="请输入审核原因..."
+                rows="3"
+              ></textarea>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button @click="showBatchModal = false" class="btn-secondary">
+              取消
+            </button>
+            <button
+              @click="batchApprove"
+              class="btn-primary"
+              :disabled="moderationLoading"
+            >
+              {{ moderationLoading ? '审核中...' : '✅ 批准' }}
+            </button>
+            <button
+              @click="batchReject"
+              class="btn-danger"
+              :disabled="moderationLoading"
+            >
+              {{ moderationLoading ? '审核中...' : '❌ 拒绝' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- 系统健康 -->
     <div v-if="currentTab === 'health'" class="tab-content">
       <div class="section-header">
@@ -277,6 +459,7 @@
 
 <script>
 import axios from 'axios';
+import { moderationAPI } from '@/services/api.js';
 
 export default {
   name: 'AdminDashboard',
@@ -288,6 +471,7 @@ export default {
         { id: 'conversations', label: '对话记录' },
         { id: 'reports', label: '研究报告' },
         { id: 'subscriptions', label: '订阅管理' },
+        { id: 'moderation', label: '内容审核' },
         { id: 'health', label: '系统健康' }
       ],
       stats: {
@@ -309,7 +493,20 @@ export default {
       searchUserId: '',
       currentPage: 1,
       pageSize: 50,
-      notification: null
+      notification: null,
+      // 内容审核相关数据
+      moderationQueue: [],
+      moderationStats: {
+        pending: 0,
+        approved: 0,
+        rejected: 0,
+        total: 0
+      },
+      moderationFilter: 'pending',
+      selectedModerationItems: [],
+      batchModerationReason: '',
+      showBatchModal: false,
+      moderationLoading: false
     };
   },
   computed: {
@@ -322,6 +519,11 @@ export default {
         console.error('[AdminDashboard] 解析用户信息失败:', error);
         return false;
       }
+    },
+
+    allSelected() {
+      return this.moderationQueue.length > 0 &&
+             this.selectedModerationItems.length === this.moderationQueue.length;
     }
   },
   async mounted() {
@@ -465,6 +667,136 @@ export default {
       }, 3000);
     },
 
+    // 内容审核相关方法
+    async loadModerationQueue() {
+      this.moderationLoading = true;
+      try {
+        const status = this.moderationFilter === 'all' ? null : this.moderationFilter;
+        const response = await moderationAPI.getModerationQueue(status, 1, 50);
+        this.moderationQueue = response.data || [];
+      } catch (error) {
+        console.error('加载审核队列失败:', error);
+        this.showNotification('加载审核队列失败', 'error');
+      } finally {
+        this.moderationLoading = false;
+      }
+    },
+
+    async loadModerationStats() {
+      try {
+        const response = await moderationAPI.getModerationStats();
+        this.moderationStats = response.data || {
+          pending: 0,
+          approved: 0,
+          rejected: 0,
+          total: 0
+        };
+      } catch (error) {
+        console.error('加载审核统计失败:', error);
+      }
+    },
+
+    async moderateItem(queueId, action, reason = '') {
+      this.moderationLoading = true;
+      try {
+        await moderationAPI.moderateContent(queueId, action, reason);
+        this.showNotification(`内容已${action === 'approve' ? '批准' : '拒绝'}`, 'success');
+        await this.loadModerationQueue();
+        await this.loadModerationStats();
+      } catch (error) {
+        console.error('审核内容失败:', error);
+        this.showNotification('审核操作失败', 'error');
+      } finally {
+        this.moderationLoading = false;
+      }
+    },
+
+    async batchApprove() {
+      this.moderationLoading = true;
+      try {
+        await moderationAPI.batchModerate(
+          this.selectedModerationItems,
+          'approve',
+          this.batchModerationReason
+        );
+        this.showNotification('批量批准成功', 'success');
+        this.showBatchModal = false;
+        this.selectedModerationItems = [];
+        this.batchModerationReason = '';
+        await this.loadModerationQueue();
+        await this.loadModerationStats();
+      } catch (error) {
+        console.error('批量审核失败:', error);
+        this.showNotification('批量审核失败', 'error');
+      } finally {
+        this.moderationLoading = false;
+      }
+    },
+
+    async batchReject() {
+      this.moderationLoading = true;
+      try {
+        await moderationAPI.batchModerate(
+          this.selectedModerationItems,
+          'reject',
+          this.batchModerationReason
+        );
+        this.showNotification('批量拒绝成功', 'success');
+        this.showBatchModal = false;
+        this.selectedModerationItems = [];
+        this.batchModerationReason = '';
+        await this.loadModerationQueue();
+        await this.loadModerationStats();
+      } catch (error) {
+        console.error('批量审核失败:', error);
+        this.showNotification('批量审核失败', 'error');
+      } finally {
+        this.moderationLoading = false;
+      }
+    },
+
+    toggleSelectAll(event) {
+      if (event.target.checked) {
+        this.selectedModerationItems = this.moderationQueue.map(item => item.id);
+      } else {
+        this.selectedModerationItems = [];
+      }
+    },
+
+    showRejectModal(item) {
+      // TODO: 实现拒绝详情模态框
+      const reason = prompt('请输入拒绝原因:');
+      if (reason !== null) {
+        this.moderateItem(item.id, 'reject', reason);
+      }
+    },
+
+    viewItemDetail(item) {
+      // TODO: 实现内容详情查看
+      console.log('View item detail:', item);
+    },
+
+    // 内容类型和风险等级标签
+    getContentTypeLabel(type) {
+      const labels = {
+        text: '文本',
+        image: '图片',
+        conversation: '对话',
+        document: '文档'
+      };
+      return labels[type] || type;
+    },
+
+    getRiskLevelLabel(level) {
+      const labels = {
+        low: '低风险',
+        medium: '中风险',
+        high: '高风险',
+        critical: '严重风险'
+      };
+      return labels[level] || level;
+    },
+
     goBack() {
       this.$router.push('/home');
     }
@@ -477,6 +809,9 @@ export default {
         this.loadReports();
       } else if (newTab === 'subscriptions' && this.subscriptions.length === 0) {
         this.loadSubscriptions();
+      } else if (newTab === 'moderation' && this.moderationQueue.length === 0) {
+        this.loadModerationQueue();
+        this.loadModerationStats();
       } else if (newTab === 'health' && !this.health) {
         this.checkHealth();
       }
@@ -490,21 +825,38 @@ export default {
   padding: 20px;
   max-width: 1400px;
   margin: 0 auto;
+  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+  min-height: 100vh;
 }
 
 .header {
   margin-bottom: 30px;
 }
 
+.header {
+  margin-bottom: 30px;
+  text-align: center;
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(10px);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+}
+
 .header h1 {
-  font-size: 28px;
-  color: #333;
+  font-size: 32px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
   margin-bottom: 8px;
 }
 
 .subtitle {
-  color: #666;
-  font-size: 14px;
+  color: #64748b;
+  font-size: 16px;
+  font-weight: 500;
 }
 
 /* 统计卡片 */
@@ -516,28 +868,41 @@ export default {
 }
 
 .stat-card {
-  background: white;
-  border-radius: 8px;
-  padding: 20px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
   display: flex;
   align-items: center;
-  gap: 15px;
+  gap: 20px;
+  transition: all 0.3s ease;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.stat-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
 }
 
 .stat-icon {
-  font-size: 36px;
+  font-size: 42px;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
 }
 
 .stat-value {
-  font-size: 32px;
-  font-weight: bold;
-  color: #333;
+  font-size: 36px;
+  font-weight: 800;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .stat-label {
-  color: #666;
-  font-size: 14px;
+  color: #64748b;
+  font-size: 15px;
+  font-weight: 600;
 }
 
 /* 标签页 */
@@ -565,17 +930,19 @@ export default {
 }
 
 .tab.active {
-  color: #007bff;
-  border-bottom-color: #007bff;
-  font-weight: 500;
+  color: #667eea;
+  border-bottom-color: #667eea;
+  font-weight: 600;
 }
 
 /* 内容区域 */
 .tab-content {
-  background: white;
-  border-radius: 8px;
-  padding: 20px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .section-header {
@@ -586,8 +953,12 @@ export default {
 }
 
 .section-header h2 {
-  font-size: 20px;
-  color: #333;
+  font-size: 22px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .filters {
@@ -842,5 +1213,287 @@ export default {
     transform: translateX(0);
     opacity: 1;
   }
+}
+
+/* 内容审核相关样式 */
+.moderation-filters {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.moderation-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.moderation-queue {
+  margin-top: 20px;
+}
+
+.queue-table-container {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+}
+
+.content-preview {
+  max-width: 300px;
+}
+
+.preview-text {
+  font-size: 14px;
+  color: #555;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 250px;
+}
+
+.risk-badge {
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.risk-low {
+  background: #d4edda;
+  color: #155724;
+}
+
+.risk-medium {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.risk-high {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.risk-critical {
+  background: #f5c6cb;
+  color: #491217;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn-approve,
+.btn-reject,
+.btn-view {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s;
+  font-weight: 600;
+}
+
+.btn-approve {
+  background: #28a745;
+  color: white;
+}
+
+.btn-approve:hover:not(:disabled) {
+  background: #218838;
+  transform: translateY(-1px);
+}
+
+.btn-reject {
+  background: #dc3545;
+  color: white;
+}
+
+.btn-reject:hover:not(:disabled) {
+  background: #c82333;
+  transform: translateY(-1px);
+}
+
+.btn-view {
+  background: #6c757d;
+  color: white;
+}
+
+.btn-view:hover {
+  background: #5a6268;
+  transform: translateY(-1px);
+}
+
+.action-buttons button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.selected {
+  background: rgba(102, 126, 234, 0.1);
+}
+
+/* 模态框样式 */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background: white;
+  border-radius: 12px;
+  padding: 0;
+  width: 90%;
+  max-width: 500px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+}
+
+.modal-header {
+  padding: 20px;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: #333;
+}
+
+.btn-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #999;
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-close:hover {
+  color: #666;
+}
+
+.modal-body {
+  padding: 20px;
+}
+
+.batch-info {
+  margin-bottom: 20px;
+  padding: 16px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border-left: 4px solid #007bff;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: #333;
+}
+
+.form-group textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 14px;
+  line-height: 1.4;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.modal-footer {
+  padding: 20px;
+  border-top: 1px solid #eee;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.btn-secondary {
+  padding: 10px 20px;
+  background: #6c757d;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: background-color 0.2s;
+}
+
+.btn-secondary:hover {
+  background: #5a6268;
+}
+
+.btn-primary {
+  padding: 10px 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.btn-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+}
+
+.btn-danger {
+  padding: 10px 20px;
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.btn-danger:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4);
+}
+
+.modal-footer button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
 }
 </style>

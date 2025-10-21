@@ -16,7 +16,7 @@ from .base_service import BaseService
 from src.dao import DocumentDAO, DocumentChunkDAO, UsersDAO
 from src.sqlmodel.rag_models import Document, Chunk as DocumentChunk
 from src.sqlmodel.models import User
-from src.config.logging import get_logger
+from src.config.logging.logging import get_logger
 
 logger = get_logger("research_service")
 

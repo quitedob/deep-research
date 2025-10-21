@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .base_service import BaseService
 from src.dao.api_usage_log import ApiUsageLogDAO
 from src.core.quota import SlidingWindowLimiter
-from src.config.logging import get_logger
+from src.config.logging.logging import get_logger
 
 logger = get_logger("quota")
 

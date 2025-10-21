@@ -10,10 +10,10 @@ import logging
 from fastapi import APIRouter, HTTPException, Depends
 from src.api.deps import require_quota
 from src.sqlmodel.models import User
-from src.llms.router import ModelRouter, LLMMessage
+from src.core.llms.router.smart_router import ModelRouter, LLMMessage
 from src.services.session_service import store
 from src.core.security import sanitize_model_output
-from src.schemas.chat import ChatItem, ChatReq, ChatResp
+from src.core.models.chat import ChatItem, ChatReq, ChatResp
 
 logger = logging.getLogger(__name__)
 

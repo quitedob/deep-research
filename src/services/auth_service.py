@@ -18,7 +18,7 @@ from passlib.context import CryptContext
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .base_service import BaseService
-from src.config.logging import get_logger
+from src.config.logging.logging import get_logger
 
 logger = get_logger("auth")
 
@@ -40,7 +40,7 @@ PASSWORD_REQUIRE_SPECIAL = True
 def get_jwt_config():
     """从配置系统获取JWT配置"""
     try:
-        from src.config.config_loader import get_settings
+        from src.config.loader.config_loader import get_settings
         settings = get_settings()
         return {
             "secret_key": settings.security.secret_key,

@@ -14,7 +14,7 @@ import uuid
 from .base_service import BaseService
 from src.dao import ConversationDAO
 from src.sqlmodel.models import ConversationSession, ConversationMessage, User
-from src.config.logging import get_logger
+from src.config.logging.logging import get_logger
 
 logger = get_logger("conversation_service")
 

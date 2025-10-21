@@ -83,7 +83,7 @@
       <div class="documents-grid">
         <div
           v-for="doc in filteredDocuments"
-          :key="doc.job_id"
+          :key="doc.file_id"
           class="document-card"
           :class="doc.status"
         >
@@ -138,7 +138,7 @@
             <button
               v-if="doc.status === 'completed'"
               class="btn-search"
-              @click="searchInDocument(doc.job_id)"
+              @click="searchInDocument(doc.file_id)"
             >
               <i class="icon-search"></i>
               搜索
@@ -146,16 +146,16 @@
             <button
               v-if="doc.status === 'failed'"
               class="btn-retry"
-              @click="retryDocument(doc.job_id)"
-              :disabled="retrying === doc.job_id"
+              @click="retryDocument(doc.file_id)"
+              :disabled="retrying === doc.file_id"
             >
               <i class="icon-retry"></i>
               重试
             </button>
             <button
               class="btn-delete"
-              @click="deleteDocument(doc.job_id)"
-              :disabled="deleting === doc.job_id"
+              @click="deleteDocument(doc.file_id)"
+              :disabled="deleting === doc.file_id"
             >
               <i class="icon-delete"></i>
               删除
@@ -179,7 +179,8 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { ragAPI } from '@/services/api.js'
+import { documentAPI } from '@/services/api.js'
+import { useNotifications } from '@/composables/useNotifications.js'
 
 // Props
 const props = defineProps({
@@ -191,6 +192,9 @@ const props = defineProps({
 
 // Emits
 const emit = defineEmits(['document-selected', 'search-in-document'])
+
+// Composables
+const { showNotification } = useNotifications()
 
 // Reactive data
 const documents = ref([])
@@ -313,12 +317,12 @@ const handleFileSelect = async (event) => {
     const fileExt = '.' + file.name.split('.').pop().toLowerCase()
 
     if (!allowedTypes.includes(fileExt)) {
-      alert(`不支持的文件类型: ${file.name}`)
+      showNotification(`不支持的文件类型: ${file.name}`, 'error')
       continue
     }
 
     if (file.size > maxSize) {
-      alert(`文件过大: ${file.name} (${formatFileSize(file.size)})`)
+      showNotification(`文件过大: ${file.name} (${formatFileSize(file.size)})`, 'error')
       continue
     }
 
@@ -350,14 +354,14 @@ const uploadFile = async (uploadId, file) => {
     upload.progress = 0
 
     // 上传文件
-    const result = await ragAPI.uploadDocument(file)
+    const result = await documentAPI.uploadFile(file)
 
     // 更新状态
     upload.status = 'processing'
-    upload.jobId = result.job_id
+    upload.jobId = result.file_id
 
     // 开始监控处理进度
-    monitorUploadProgress(uploadId, result.job_id)
+    monitorUploadProgress(uploadId, result.file_id)
 
   } catch (error) {
     console.error('文件上传失败:', error)
@@ -369,17 +373,17 @@ const uploadFile = async (uploadId, file) => {
   }
 }
 
-const monitorUploadProgress = async (uploadId, jobId) => {
+const monitorUploadProgress = async (uploadId, fileId) => {
   const checkStatus = async () => {
     try {
-      const status = await ragAPI.getDocumentStatus(jobId)
+      const status = await documentAPI.getFileStatus(fileId)
       const upload = uploadQueue.value.find(u => u.id === uploadId)
 
       if (upload) {
         upload.status = status.status
-        upload.progress = status.result?.progress || 0
+        upload.progress = status.extracted_text ? 100 : 50
 
-        if (status.status === 'completed' || status.status === 'failed') {
+        if (status.status === 'completed' || status.status === 'failed' || status.status === 'error') {
           // 处理完成，从队列移除
           setTimeout(() => {
             const index = uploadQueue.value.findIndex(u => u.id === uploadId)
@@ -406,8 +410,8 @@ const monitorUploadProgress = async (uploadId, jobId) => {
 const loadDocuments = async () => {
   loading.value = true
   try {
-    const result = await ragAPI.getDocuments(1, 50)
-    documents.value = result.documents || []
+    const result = await documentAPI.getFiles(0, 50)
+    documents.value = result.files || []
   } catch (error) {
     console.error('加载文档列表失败:', error)
     documents.value = []
@@ -425,31 +429,30 @@ const searchInDocument = (jobId) => {
   emit('search-in-document', jobId)
 }
 
-const retryDocument = async (jobId) => {
-  retrying.value = jobId
+const retryDocument = async (fileId) => {
+  retrying.value = fileId
   try {
-    await ragAPI.retryDocument(jobId)
-    // 重新加载文档列表
+    // 目前后端没有重试API，这里重新加载文档列表
     await loadDocuments()
   } catch (error) {
     console.error('重试文档处理失败:', error)
-    alert('重试失败，请稍后再试')
+    showNotification('重试失败，请稍后再试', 'error')
   } finally {
     retrying.value = null
   }
 }
 
-const deleteDocument = async (jobId) => {
+const deleteDocument = async (fileId) => {
   if (!confirm('确定要删除这个文档吗？')) return
 
-  deleting.value = jobId
+  deleting.value = fileId
   try {
-    await ragAPI.deleteDocument(jobId)
+    await documentAPI.deleteFile(fileId)
     // 从列表中移除
-    documents.value = documents.value.filter(doc => doc.job_id !== jobId)
+    documents.value = documents.value.filter(doc => doc.file_id !== fileId)
   } catch (error) {
     console.error('删除文档失败:', error)
-    alert('删除失败，请稍后再试')
+    showNotification('删除失败，请稍后再试', 'error')
   } finally {
     deleting.value = null
   }

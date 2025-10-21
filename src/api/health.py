@@ -13,7 +13,7 @@ from ..sqlmodel.models import User
 from ..service.auth import get_current_user
 from ..middleware.monitoring import get_health_status, get_metrics
 from src.core.db import get_db_session
-from src.config.logging import get_performance_monitor
+from src.config.logging.logging import get_performance_monitor
 from src.llms.router import ModelRouter
 
 router = APIRouter(prefix="/health", tags=["health"])

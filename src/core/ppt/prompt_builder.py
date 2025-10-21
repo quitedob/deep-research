@@ -264,3 +264,4 @@ def get_prompt_builder() -> PromptBuilder:
     if _prompt_builder is None:
         _prompt_builder = PromptBuilder()
     return _prompt_builder
+

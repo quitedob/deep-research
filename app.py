@@ -44,13 +44,16 @@ from src.api.user import router as user_router
 # from src.api.agents import router as agents_router
 # from src.api.llm_provider import router as llm_provider_router
 # from src.api.search import router as search_router
-# from src.api.agent_llm_config import router as agent_llm_config_router
 # from src.api.ocr import router as ocr_router
 # from src.api.file_upload import router as file_upload_router
+
+# 内容审核和智能体配置路由
+from src.api.moderation import router as moderation_router
+from src.api.agent_llm_config import router as agent_llm_config_router
 from src.middleware.monitoring import request_monitoring_middleware
 from src.middleware.security import security_middleware_func
-from src.config.config_loader import get_settings
-from src.config.logging import setup_logging
+from src.config.loader.config_loader import get_settings
+from src.config.logging.logging import setup_logging
 
 settings = get_settings()
 
@@ -183,11 +186,14 @@ def create_app() -> FastAPI:
     app.include_router(share_router, prefix="/api")        # 分享功能
     app.include_router(user_router, prefix="/api")         # 用户功能
 
+    # 内容审核和智能体配置路由
+    app.include_router(moderation_router, prefix="/api")   # 内容审核
+    app.include_router(agent_llm_config_router, prefix="/api") # 智能体配置
+
     # 暂时禁用的路由（由于模块不存在）
     # app.include_router(agents_router, prefix="/api")
     # app.include_router(llm_provider_router, prefix="/api")
     # app.include_router(search_router, prefix="/api")
-    # app.include_router(agent_llm_config_router, prefix="/api")
     # app.include_router(ocr_router, prefix="/api")
     # app.include_router(file_upload_router, prefix="/api")
 

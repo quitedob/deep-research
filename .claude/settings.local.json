@@ -2,7 +2,14 @@
   "permissions": {
     "allow": [
       "Bash(python:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(find:*)",
+      "Bash(mkdir -p \"D:\\python\\deep-research\\src\\config\\loader\" \"D:\\python\\deep-research\\src\\config\\logging\")",
+      "Bash(cp \"D:\\python\\deep-research\\src\\core\\config\\loader\\config_loader.py\" \"D:\\python\\deep-research\\src\\config\\loader\\config_loader.py\")",
+      "Bash(cp \"D:\\python\\deep-research\\src\\core\\config\\logging\\logging.py\" \"D:\\python\\deep-research\\src\\config\\logging\\logging.py\")",
+      "Bash(cp \"D:\\python\\deep-research\\src\\core\\config\\defensive_rules.txt\" \"D:\\python\\deep-research\\src\\config\\defensive_rules.txt\")",
+      "Bash(npm run lint:check:*)",
+      "Bash(pip install:*)"
     ],
     "deny": [],
     "ask": []

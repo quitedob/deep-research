@@ -324,3 +324,4 @@ def get_renderer() -> PPTXRenderer:
     if _renderer is None:
         _renderer = PPTXRenderer()
     return _renderer
+

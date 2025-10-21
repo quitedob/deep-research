@@ -91,12 +91,20 @@
                 </span>
               </td>
               <td>
-                <button 
-                  @click="updateSingleConfig(config)" 
-                  class="btn-update"
-                >
-                  更新
-                </button>
+                <div class="action-buttons">
+                  <button
+                    @click="updateSingleConfig(config)"
+                    class="btn-update"
+                  >
+                    更新
+                  </button>
+                  <button
+                    @click="testAgentConfig(config)"
+                    class="btn-test"
+                  >
+                    测试
+                  </button>
+                </div>
               </td>
             </tr>
           </tbody>
@@ -150,7 +158,7 @@
 </template>
 
 <script>
-import axios from 'axios';
+import { agentConfigAPI, llmProviderAPI } from '@/services/api.js';
 
 export default {
   name: 'AgentLLMConfig',
@@ -175,25 +183,29 @@ export default {
   methods: {
     async loadConfigs() {
       try {
-        const response = await axios.get('/api/agent-llm-config/configs');
-        this.agentConfigs = response.data.configs;
+        const response = await agentConfigAPI.getAgentConfigs();
+        this.agentConfigs = response.data || [];
+        console.log('[AgentLLMConfig] 智能体配置加载成功:', this.agentConfigs);
       } catch (error) {
+        console.error('[AgentLLMConfig] 加载配置失败:', error);
         this.showNotification('加载配置失败: ' + error.message, 'error');
       }
     },
     
     async loadProviders() {
       try {
-        const response = await axios.get('/api/agent-llm-config/available-providers');
-        this.availableProviders = response.data.providers;
+        const response = await agentConfigAPI.getAvailableModels();
+        this.availableProviders = response.data?.providers || {};
+        console.log('[AgentLLMConfig] 可用提供商加载成功:', this.availableProviders);
       } catch (error) {
+        console.error('[AgentLLMConfig] 加载可用提供商失败:', error);
         this.showNotification('加载提供商信息失败: ' + error.message, 'error');
       }
     },
     
     async loadSearchProvider() {
       try {
-        const response = await axios.get('/api/llm-provider/current');
+        const response = await llmProviderAPI.getCurrentProvider();
         this.currentSearchProvider = response.data.current_provider;
         this.searchProviderStatus = true;
       } catch (error) {
@@ -203,9 +215,7 @@ export default {
     
     async updateSearchProvider() {
       try {
-        await axios.post('/api/llm-provider/set-default', {
-          provider_id: this.currentSearchProvider
-        });
+        await llmProviderAPI.setDefaultProvider(this.currentSearchProvider);
         this.showNotification(`搜索提供商已切换到: ${this.currentSearchProvider}`, 'success');
       } catch (error) {
         this.showNotification('切换搜索提供商失败: ' + error.message, 'error');
@@ -214,13 +224,14 @@ export default {
     
     async updateSingleConfig(config) {
       try {
-        await axios.put(`/api/agent-llm-config/configs/${config.agent_id}`, {
-          agent_id: config.agent_id,
+        await agentConfigAPI.updateAgentConfig(config.agent_id, {
           llm_provider: config.llm_provider,
           model_name: config.model_name
         });
         this.showNotification(`${config.agent_name} 配置已更新`, 'success');
+        console.log('[AgentLLMConfig] 单个配置更新成功:', config);
       } catch (error) {
+        console.error('[AgentLLMConfig] 更新配置失败:', error);
         this.showNotification('更新配置失败: ' + error.message, 'error');
       }
     },
@@ -232,13 +243,12 @@ export default {
           llm_provider: c.llm_provider,
           model_name: c.model_name
         }));
-        
-        await axios.post('/api/agent-llm-config/configs/batch-update', {
-          configs
-        });
-        
+
+        await agentConfigAPI.batchUpdateConfigs(configs);
         this.showNotification('所有配置已保存', 'success');
+        console.log('[AgentLLMConfig] 批量配置更新成功');
       } catch (error) {
+        console.error('[AgentLLMConfig] 保存配置失败:', error);
         this.showNotification('保存配置失败: ' + error.message, 'error');
       }
     },
@@ -247,12 +257,14 @@ export default {
       if (!confirm('确定要重置所有配置为默认值吗？')) {
         return;
       }
-      
+
       try {
-        const response = await axios.post('/api/agent-llm-config/reset-defaults');
-        this.agentConfigs = response.data.configs;
+        const response = await agentConfigAPI.resetToDefaults();
+        this.agentConfigs = response.data || [];
         this.showNotification('配置已重置为默认值', 'success');
+        console.log('[AgentLLMConfig] 配置重置成功');
       } catch (error) {
+        console.error('[AgentLLMConfig] 重置配置失败:', error);
         this.showNotification('重置配置失败: ' + error.message, 'error');
       }
     },
@@ -279,6 +291,24 @@ export default {
       return isAvailable ? '可用' : '未配置';
     },
     
+  async testAgentConfig(config) {
+      if (!confirm(`确定要测试 ${config.agent_name} 的配置吗？这将发送一个测试请求。`)) {
+        return;
+      }
+
+      const testPrompt = '你好，请简单介绍一下你的功能。';
+
+      try {
+        this.showNotification(`正在测试 ${config.agent_name} 配置...`, 'info');
+        const response = await agentConfigAPI.testAgentConfig(config.agent_id, { prompt: testPrompt });
+        this.showNotification(`${config.agent_name} 配置测试成功`, 'success');
+        console.log('[AgentLLMConfig] 配置测试成功:', response);
+      } catch (error) {
+        console.error('[AgentLLMConfig] 配置测试失败:', error);
+        this.showNotification(`配置测试失败: ${error.message}`, 'error');
+      }
+    },
+
     showNotification(message, type = 'info') {
       this.notification = { message, type };
       setTimeout(() => {
@@ -294,35 +324,73 @@ export default {
   padding: 20px;
   max-width: 1400px;
   margin: 0 auto;
+  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+  min-height: 100vh;
+  position: relative;
+}
+
+.agent-llm-config::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background:
+    radial-gradient(circle at 20% 80%, rgba(255, 255, 255, 0.1) 0%, transparent 50%),
+    radial-gradient(circle at 80% 20%, rgba(255, 255, 255, 0.1) 0%, transparent 50%);
+  pointer-events: none;
 }
 
 .header {
   margin-bottom: 30px;
+  text-align: center;
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(20px);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  position: relative;
+  z-index: 1;
 }
 
 .header h1 {
-  font-size: 28px;
-  color: #333;
+  font-size: 32px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
   margin-bottom: 8px;
 }
 
 .subtitle {
-  color: #666;
-  font-size: 14px;
+  color: #64748b;
+  font-size: 16px;
+  font-weight: 500;
 }
 
 /* 搜索提供商配置 */
 .search-provider-section {
-  background: #f8f9fa;
-  padding: 20px;
-  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  padding: 24px;
+  border-radius: 12px;
   margin-bottom: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  position: relative;
+  z-index: 1;
 }
 
 .search-provider-section h2 {
-  font-size: 18px;
+  font-size: 20px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
   margin-bottom: 15px;
-  color: #333;
 }
 
 .provider-selector {
@@ -333,14 +401,14 @@ export default {
 }
 
 .provider-selector label {
-  font-weight: 500;
-  color: #555;
+  font-weight: 600;
+  color: #475569;
 }
 
 .provider-selector select {
-  padding: 8px 12px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
+  padding: 10px 16px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
   font-size: 14px;
   min-width: 200px;
 }
@@ -366,23 +434,40 @@ export default {
 
 /* 配置表格 */
 .config-table-section {
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
   margin-bottom: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.config-table-section:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
 }
 
 .table-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 20px;
-  border-bottom: 1px solid #eee;
+  padding: 24px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
 }
 
 .table-header h2 {
-  font-size: 18px;
-  color: #333;
+  font-size: 20px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin: 0;
 }
 
 .actions {
@@ -462,65 +547,108 @@ export default {
 .btn-primary,
 .btn-secondary,
 .btn-update {
-  padding: 8px 16px;
+  padding: 10px 20px;
   border: none;
-  border-radius: 4px;
+  border-radius: 8px;
   font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
 }
 
 .btn-primary {
-  background: #007bff;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
 }
 
 .btn-primary:hover {
-  background: #0056b3;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
 }
 
 .btn-secondary {
-  background: #6c757d;
-  color: white;
+  background: rgba(255, 255, 255, 0.9);
+  color: #667eea;
+  border: 1px solid rgba(102, 126, 234, 0.3);
+  backdrop-filter: blur(10px);
 }
 
 .btn-secondary:hover {
-  background: #545b62;
+  background: rgba(255, 255, 255, 1);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
 }
 
 .btn-update {
-  background: #28a745;
+  background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
   color: white;
-  padding: 6px 12px;
+  padding: 8px 16px;
   font-size: 13px;
+  box-shadow: 0 4px 15px rgba(56, 239, 125, 0.4);
 }
 
 .btn-update:hover {
-  background: #218838;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(56, 239, 125, 0.6);
 }
 
 /* 提供商信息卡片 */
 .providers-info {
-  margin-top: 30px;
+  margin-top: 40px;
 }
 
 .providers-info h2 {
-  font-size: 18px;
-  margin-bottom: 20px;
-  color: #333;
+  font-size: 24px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 30px;
+  text-align: center;
 }
 
 .provider-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  gap: 24px;
 }
 
 .provider-card {
-  background: white;
-  border-radius: 8px;
-  padding: 20px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.provider-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #667eea, #764ba2, #667eea);
+  background-size: 200% 100%;
+  animation: gradientShift 3s ease-in-out infinite;
+}
+
+@keyframes gradientShift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+.provider-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
 }
 
 .provider-card.unavailable {
@@ -531,32 +659,45 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 15px;
-  padding-bottom: 15px;
-  border-bottom: 1px solid #eee;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .provider-header h3 {
-  font-size: 16px;
-  color: #333;
+  font-size: 18px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin: 0;
 }
 
 .availability {
-  padding: 4px 10px;
-  border-radius: 12px;
+  padding: 6px 16px;
+  border-radius: 20px;
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  backdrop-filter: blur(10px);
 }
 
 .availability.available {
-  background: #d4edda;
-  color: #155724;
+  background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+  color: white;
+  box-shadow: 0 2px 8px rgba(56, 239, 125, 0.3);
 }
 
 .provider-models h4 {
-  font-size: 14px;
-  color: #555;
-  margin-bottom: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 16px;
 }
 
 .provider-models ul {
@@ -565,37 +706,51 @@ export default {
 }
 
 .provider-models li {
-  margin-bottom: 15px;
-  padding: 10px;
-  background: #f8f9fa;
-  border-radius: 4px;
+  margin-bottom: 16px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(10px);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  transition: all 0.2s ease;
+}
+
+.provider-models li:hover {
+  background: rgba(255, 255, 255, 0.9);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
 }
 
 .provider-models li strong {
   color: #333;
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .provider-models li p {
   color: #666;
-  font-size: 12px;
-  margin: 5px 0;
+  font-size: 13px;
+  margin: 8px 0;
+  line-height: 1.5;
 }
 
 .features {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
-  margin-top: 8px;
+  gap: 8px;
+  margin-top: 12px;
 }
 
 .feature-tag {
-  background: #e7f3ff;
-  color: #0066cc;
-  padding: 2px 8px;
-  border-radius: 10px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 4px 12px;
+  border-radius: 16px;
   font-size: 11px;
-  font-weight: 500;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
 }
 
 /* 通知消息 */
@@ -637,5 +792,124 @@ export default {
     transform: translateX(0);
     opacity: 1;
   }
+}
+
+/* 新增的按钮样式 */
+.action-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-test {
+  padding: 8px 16px;
+  border: 1px solid #28a745;
+  background: #28a745;
+  color: white;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.btn-test:hover {
+  background: #218838;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(40, 167, 69, 0.3);
+}
+
+.btn-test:active {
+  transform: translateY(0);
+}
+
+.btn-update {
+  padding: 8px 16px;
+  border: 1px solid #007bff;
+  background: #007bff;
+  color: white;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.btn-update:hover {
+  background: #0056b3;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 123, 255, 0.3);
+}
+
+.btn-update:active {
+  transform: translateY(0);
+}
+
+/* 表格样式优化 */
+.config-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.config-table th {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 12px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.config-table td {
+  padding: 12px;
+  border-bottom: 1px solid #eee;
+  vertical-align: middle;
+}
+
+.config-table tr:last-child td {
+  border-bottom: none;
+}
+
+.config-table tr:hover {
+  background-color: #f8f9fa;
+}
+
+/* 选择框样式优化 */
+.provider-select, .model-select {
+  padding: 6px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  background: white;
+  min-width: 150px;
+  transition: border-color 0.2s;
+}
+
+.provider-select:focus, .model-select:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+}
+
+/* 状态徽章优化 */
+.status-badge {
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.status-badge.available {
+  background: #d4edda;
+  color: #155724;
+}
+
+.status-badge.unavailable {
+  background: #f8d7da;
+  color: #721c24;
 }
 </style>

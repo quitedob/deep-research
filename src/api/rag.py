@@ -21,8 +21,8 @@ from src.dao import DocumentProcessingJobDAO
 from src.services.auth_service import get_current_user
 from src.tasks.queue import enqueue_task, get_task_status, TaskPriority
 from src.tasks.document_processor import process_document_task
-from src.config.config_loader import get_settings
-from src.config.logging import get_logger
+from src.config.loader.config_loader import get_settings
+from src.config.logging.logging import get_logger
 from .errors import (
     handle_database_error,
     handle_file_error,

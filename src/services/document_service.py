@@ -16,8 +16,8 @@ from pathlib import Path
 from .base_service import BaseService
 from src.dao import DocumentProcessingJobDAO, DocumentDAO, DocumentChunkDAO
 from src.sqlmodel.rag_models import DocumentProcessingJob, Document, Chunk as DocumentChunk
-from src.config.logging import get_logger
-from src.config.config_loader import get_settings
+from src.config.logging.logging import get_logger
+from src.config.loader.config_loader import get_settings
 
 logger = get_logger("document_service")
 

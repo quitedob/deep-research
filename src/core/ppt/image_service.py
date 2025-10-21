@@ -130,3 +130,4 @@ def get_image_service() -> ImageService:
     if _image_service is None:
         _image_service = ImageService()
     return _image_service
+

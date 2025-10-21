@@ -871,3 +871,94 @@ async def system_health_check(
     except Exception as e:
         logger.error(f"系统健康检查失败: {e}")
         return handle_database_error(e)
+
+
+# ==================== 内容审核管理端点 ====================
+
+@router.get("/moderation/queue", response_model=List[dict])
+async def get_moderation_queue_admin(
+    status: Optional[str] = Query(None, description="过滤状态：pending, approved, rejected"),
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(20, ge=1, le=100, description="每页数量"),
+    current_admin: User = Depends(require_admin),
+    session: AsyncSession = Depends(get_async_session)
+):
+    """获取审核队列（管理员）"""
+    try:
+        from ..api.moderation import get_moderation_queue
+        return await get_moderation_queue(status=status, page=page, page_size=page_size,
+                                       current_user=current_admin, session=session)
+    except Exception as e:
+        logger.error(f"获取审核队列失败: {e}")
+        return handle_database_error(e)
+
+
+@router.post("/moderation/{queue_id}/review")
+async def review_moderation_item_admin(
+    queue_id: int,
+    action: str = Query(..., description="审核动作：approve, reject"),
+    review_notes: Optional[str] = None,
+    current_admin: User = Depends(require_admin),
+    session: AsyncSession = Depends(get_async_session)
+):
+    """审核单个内容项（管理员）"""
+    try:
+        from ..api.moderation import review_moderation_item
+        from ..api.moderation import ReviewRequest
+
+        request = ReviewRequest(action=action, review_notes=review_notes)
+        return await review_moderation_item(queue_id, request, current_user=current_admin, session=session)
+    except Exception as e:
+        logger.error(f"审核内容失败: {e}")
+        return handle_database_error(e)
+
+
+@router.post("/moderation/batch-review")
+async def batch_review_moderation_admin(
+    queue_ids: List[int],
+    action: str = Query(..., description="批量审核动作：approve, reject"),
+    review_notes: Optional[str] = None,
+    current_admin: User = Depends(require_admin),
+    session: AsyncSession = Depends(get_async_session)
+):
+    """批量审核内容（管理员）"""
+    try:
+        from ..api.moderation import batch_review_moderation
+        from ..api.moderation import BatchReviewRequest
+
+        request = BatchReviewRequest(queue_ids=queue_ids, action=action, review_notes=review_notes)
+        return await batch_review_moderation(request, current_user=current_admin, session=session)
+    except Exception as e:
+        logger.error(f"批量审核失败: {e}")
+        return handle_database_error(e)
+
+
+@router.get("/moderation/stats")
+async def get_moderation_stats_admin(
+    current_admin: User = Depends(require_admin),
+    session: AsyncSession = Depends(get_async_session)
+):
+    """获取审核统计信息（管理员）"""
+    try:
+        from ..api.moderation import get_moderation_stats
+        return await get_moderation_stats(current_user=current_admin, session=session)
+    except Exception as e:
+        logger.error(f"获取审核统计失败: {e}")
+        return handle_database_error(e)
+
+
+@router.get("/moderation/history", response_model=List[dict])
+async def get_moderation_history_admin(
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(50, ge=1, le=200, description="每页数量"),
+    current_admin: User = Depends(require_admin),
+    session: AsyncSession = Depends(get_async_session)
+):
+    """获取审核历史（管理员）"""
+    try:
+        from ..api.moderation import get_moderation_history
+        return await get_moderation_history(page=page, page_size=page_size,
+                                         current_user=current_admin, session=session)
+    except Exception as e:
+        logger.error(f"获取审核历史失败: {e}")
+        return handle_database_error(e)

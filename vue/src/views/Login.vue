@@ -156,20 +156,39 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  background: linear-gradient(135deg, #f0f7ff 0%, #e3eeff 100%);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   font-family: 'Google Sans', 'Noto Sans', 'Noto Sans SC', 'Roboto', 'Arial', sans-serif;
   padding: 20px;
+  position: relative;
+  overflow: hidden;
+}
+
+.auth-page::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background:
+    radial-gradient(circle at 20% 80%, rgba(255, 255, 255, 0.1) 0%, transparent 50%),
+    radial-gradient(circle at 80% 20%, rgba(255, 255, 255, 0.1) 0%, transparent 50%),
+    radial-gradient(circle at 40% 40%, rgba(255, 255, 255, 0.05) 0%, transparent 50%);
+  pointer-events: none;
 }
 
 .auth-card {
   width: 100%;
   max-width: 450px;
   padding: 48px 40px;
-  border: 1px solid #dadce0;
-  border-radius: 12px;
-  background-color: #ffffff;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
   transition: transform 0.3s ease, box-shadow 0.3s ease;
+  position: relative;
+  z-index: 1;
 }
 
 .auth-card:hover {
@@ -196,8 +215,11 @@ onMounted(() => {
 
 .brand-name {
   font-size: 20px;
-  font-weight: 500;
-  color: #1a73e8;
+  font-weight: 600;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .title {
@@ -329,20 +351,37 @@ onMounted(() => {
 
 .primary-btn {
   padding: 12px 28px;
-  border-radius: 6px;
+  border-radius: 8px;
   border: none;
-  background: linear-gradient(to right, #1a73e8, #0d5abf);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: #ffffff;
   font-size: 15px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
-  box-shadow: 0 2px 6px rgba(26, 115, 232, 0.3);
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+  position: relative;
+  overflow: hidden;
+}
+
+.primary-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s;
+}
+
+.primary-btn:hover::before {
+  left: 100%;
 }
 
 .primary-btn:hover {
-  background: linear-gradient(to right, #0d5abf, #0a4ba7);
-  box-shadow: 0 4px 10px rgba(26, 115, 232, 0.4);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
 }
 
 .primary-btn:disabled {

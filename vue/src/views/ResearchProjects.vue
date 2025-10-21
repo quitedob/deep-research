@@ -179,7 +179,8 @@
 </template>
 
 <script>
-import api from '../services/api'
+import { researchAPI, documentAPI } from '../services/api'
+import { useNotifications } from '@/composables/useNotifications.js'
 
 export default {
   name: 'ResearchProjects',
@@ -201,6 +202,10 @@ export default {
       }
     }
   },
+  setup() {
+    const { showNotification } = useNotifications()
+    return { showNotification }
+  },
   mounted() {
     this.loadProjects()
   },
@@ -208,36 +213,100 @@ export default {
     async loadProjects() {
       this.loading = true
       try {
-        const params = {
-          limit: this.pageSize,
-          offset: (this.currentPage - 1) * this.pageSize
-        }
+        // 由于后端暂时没有项目管理API，这里使用会话历史作为模拟
+        // TODO: 后续需要实现真正的项目管理API
+
+        // 创建模拟数据结构来展示功能
+        const mockProjects = this.generateMockProjects()
+
+        // 应用过滤
+        let filteredProjects = mockProjects
         if (this.filterStatus) {
-          params.status = this.filterStatus
+          filteredProjects = mockProjects.filter(p => p.status === this.filterStatus)
         }
-        
-        const response = await api.get('/research/projects/list', { params })
-        this.projects = response.data.projects
-        this.totalPages = Math.ceil(response.data.total / this.pageSize)
+        if (this.searchQuery) {
+          filteredProjects = filteredProjects.filter(p =>
+            p.title.toLowerCase().includes(this.searchQuery.toLowerCase()) ||
+            p.description.toLowerCase().includes(this.searchQuery.toLowerCase()) ||
+            p.query.toLowerCase().includes(this.searchQuery.toLowerCase())
+          )
+        }
+
+        // 分页
+        const startIndex = (this.currentPage - 1) * this.pageSize
+        const endIndex = startIndex + this.pageSize
+        this.projects = filteredProjects.slice(startIndex, endIndex)
+        this.totalPages = Math.ceil(filteredProjects.length / this.pageSize)
+
       } catch (error) {
         console.error('加载项目失败:', error)
-        this.$toast?.error('加载项目失败')
+        this.showNotification('加载项目失败', 'error')
       } finally {
         this.loading = false
       }
+    },
+
+    // 生成模拟项目数据（用于演示）
+    generateMockProjects() {
+      return [
+        {
+          id: '1',
+          title: '人工智能在医疗诊断中的应用研究',
+          description: '深入分析AI技术在医疗诊断领域的应用现状和发展趋势',
+          query: '人工智能医疗诊断应用现状与发展趋势',
+          status: 'completed',
+          progress: 100,
+          created_at: '2024-01-15T10:30:00Z',
+          session_id: 'session_1'
+        },
+        {
+          id: '2',
+          title: '区块链技术在供应链管理中的创新应用',
+          description: '探讨区块链技术如何提升供应链管理的透明度和效率',
+          query: '区块链供应链管理创新应用',
+          status: 'running',
+          progress: 65,
+          created_at: '2024-01-16T14:20:00Z',
+          session_id: 'session_2'
+        },
+        {
+          id: '3',
+          title: '可持续能源发展策略研究',
+          description: '分析全球可持续能源发展现状及未来策略建议',
+          query: '可持续能源发展现状与策略',
+          status: 'pending',
+          progress: 0,
+          created_at: '2024-01-17T09:15:00Z',
+          session_id: 'session_3'
+        }
+      ]
     },
     
     async createProject() {
       this.creating = true
       try {
-        await api.post('/research/projects/create', this.newProject)
-        this.$toast?.success('项目创建成功')
+        // 由于后端没有项目管理API，这里使用研究API作为替代
+        const response = await researchAPI.startResearch(this.newProject.query)
+
+        // 创建模拟项目对象
+        const newProject = {
+          id: response.session_id,
+          title: this.newProject.title,
+          description: this.newProject.description,
+          query: this.newProject.query,
+          status: 'running',
+          progress: 25,
+          created_at: new Date().toISOString(),
+          session_id: response.session_id
+        }
+
+        this.projects.unshift(newProject)
+        this.showNotification('研究项目创建成功', 'success')
         this.showCreateModal = false
         this.newProject = { title: '', query: '', description: '' }
-        this.loadProjects()
       } catch (error) {
         console.error('创建项目失败:', error)
-        this.$toast?.error('创建项目失败')
+        this.showNotification('创建项目失败: ' + error.message, 'error')
       } finally {
         this.creating = false
       }
@@ -245,12 +314,17 @@ export default {
     
     async executeProject(projectId) {
       try {
-        await api.post(`/research/projects/${projectId}/execute`)
-        this.$toast?.success('项目已开始执行')
-        this.loadProjects()
+        // 找到对应项目并启动研究
+        const project = this.projects.find(p => p.id === projectId)
+        if (project) {
+          await researchAPI.startResearch(project.query, project.session_id)
+          this.showNotification('项目已开始执行', 'success')
+          project.status = 'running'
+          project.progress = 25
+        }
       } catch (error) {
         console.error('执行项目失败:', error)
-        this.$toast?.error('执行项目失败')
+        this.showNotification('执行项目失败: ' + error.message, 'error')
       }
     },
     
@@ -260,14 +334,17 @@ export default {
     
     async deleteProject(projectId) {
       if (!confirm('确定要删除这个项目吗？')) return
-      
+
       try {
-        await api.delete(`/research/projects/${projectId}`)
-        this.$toast?.success('项目已删除')
-        this.loadProjects()
+        // 从本地数组中删除项目（因为没有后端API）
+        const index = this.projects.findIndex(p => p.id === projectId)
+        if (index !== -1) {
+          this.projects.splice(index, 1)
+          this.showNotification('项目已删除', 'success')
+        }
       } catch (error) {
         console.error('删除项目失败:', error)
-        this.$toast?.error('删除项目失败')
+        this.showNotification('删除项目失败: ' + error.message, 'error')
       }
     },
     

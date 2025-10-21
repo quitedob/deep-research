@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+gi# -*- coding: utf-8 -*-
 """
 UserService: 用户管理业务逻辑
 提供用户相关的业务操作，包括注册、认证、权限管理等

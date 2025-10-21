@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 from src.api.deps import require_auth
 from src.sqlmodel.models import User
-from src.config.config_loader import get_settings
+from src.config.loader.config_loader import get_settings
 from src.llms.router import ModelRouter
 
 logger = logging.getLogger(__name__)

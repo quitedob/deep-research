@@ -247,3 +247,4 @@ class OllamaAdapter:
             估算成本（始终为0）
         """
         return 0.0  # Ollama本地运行，无API费用
+

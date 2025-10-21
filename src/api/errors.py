@@ -73,7 +73,7 @@ def create_error_response(
 
 def handle_database_error(error: Exception, operation: str = "database_operation") -> JSONResponse:
     """处理数据库相关错误"""
-    from src.config.logging import get_logger
+    from src.config.logging.logging import get_logger
     logger = get_logger("errors")
 
     logger.error(f"数据库操作失败: {operation} - {str(error)}")
@@ -88,7 +88,7 @@ def handle_database_error(error: Exception, operation: str = "database_operation
 
 def handle_validation_error(error: Exception, field: Optional[str] = None) -> JSONResponse:
     """处理验证错误"""
-    from src.config.logging import get_logger
+    from src.config.logging.logging import get_logger
     logger = get_logger("errors")
 
     logger.warning(f"验证失败: {field or 'unknown'} - {str(error)}")
@@ -103,7 +103,7 @@ def handle_validation_error(error: Exception, field: Optional[str] = None) -> JS
 
 def handle_file_error(error: Exception, filename: str = "", operation: str = "file_operation") -> JSONResponse:
     """处理文件相关错误"""
-    from src.config.logging import get_logger
+    from src.config.logging.logging import get_logger
     logger = get_logger("errors")
 
     logger.error(f"文件操作失败: {operation} - {filename} - {str(error)}")
@@ -118,7 +118,7 @@ def handle_file_error(error: Exception, filename: str = "", operation: str = "fi
 
 def handle_auth_error(error: Exception, operation: str = "authentication") -> JSONResponse:
     """处理认证相关错误"""
-    from src.config.logging import get_logger
+    from src.config.logging.logging import get_logger
     logger = get_logger("errors")
 
     logger.warning(f"认证失败: {operation} - {str(error)}")
@@ -133,7 +133,7 @@ def handle_auth_error(error: Exception, operation: str = "authentication") -> JS
 
 def handle_not_found_error(resource: str, resource_id: Optional[str] = None) -> JSONResponse:
     """处理资源未找到错误"""
-    from src.config.logging import get_logger
+    from src.config.logging.logging import get_logger
     logger = get_logger("errors")
 
     logger.info(f"资源未找到: {resource} - {resource_id or 'unknown'}")
@@ -148,7 +148,7 @@ def handle_not_found_error(resource: str, resource_id: Optional[str] = None) -> 
 
 def handle_rate_limit_error() -> JSONResponse:
     """处理速率限制错误"""
-    from src.config.logging import get_logger
+    from src.config.logging.logging import get_logger
     logger = get_logger("errors")
 
     logger.warning("触发速率限制")
