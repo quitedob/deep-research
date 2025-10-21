@@ -1,43 +1,55 @@
 <template>
   <div class="app-root-wrapper">
-    <!-- 顶部导航栏 -->
+    <!-- macOS-style Navigation Bar -->
     <header class="app-header">
       <div class="header-content">
-        <div class="logo">
-          <img src="@/assets/logo.svg" alt="Deep Research" class="logo-icon">
-          <span>Deep Research</span>
+        <!-- Left: App Logo and Navigation -->
+        <div class="header-left">
+          <div class="app-logo">
+            <div class="logo-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+              </svg>
+            </div>
+            <span class="logo-text">Deep Research</span>
+          </div>
+
+          <nav class="main-nav">
+            <router-link
+              to="/home"
+              class="nav-item"
+              custom
+              v-slot="{ navigate, isActive }"
+            >
+              <button
+                :class="{ active: isActive }"
+                @click="navigate"
+                class="nav-btn"
+              >
+                <i class="nav-icon">💬</i>
+                <span class="nav-label">对话</span>
+              </button>
+            </router-link>
+            <router-link
+              v-if="isAdmin"
+              to="/admin"
+              class="nav-item"
+              custom
+              v-slot="{ navigate, isActive }"
+            >
+              <button
+                :class="{ active: isActive }"
+                @click="navigate"
+                class="nav-btn"
+              >
+                <i class="nav-icon">📊</i>
+                <span class="nav-label">控制台</span>
+              </button>
+            </router-link>
+          </nav>
         </div>
-        <nav class="main-nav">
-          <router-link
-            to="/home"
-            class="nav-item"
-            custom
-            v-slot="{ navigate, isActive }"
-          >
-            <button
-              :class="{ active: isActive }"
-              @click="navigate"
-            >
-              <i class="icon-message"></i>
-              对话
-            </button>
-          </router-link>
-          <router-link
-            v-if="isAdmin"
-            to="/admin"
-            class="nav-item"
-            custom
-            v-slot="{ navigate, isActive }"
-          >
-            <button
-              :class="{ active: isActive }"
-              @click="navigate"
-            >
-              <i class="icon-dashboard"></i>
-              控制台
-            </button>
-          </router-link>
-        </nav>
+
+        <!-- Right: User Actions -->
         <div class="header-actions">
           <UserProfileMenu :current-theme="theme" @toggle-theme="toggleTheme" />
         </div>
@@ -144,67 +156,110 @@ body {
   flex-direction: column;
 }
 
-/* 应用头部样式 */
+/* macOS-style Header */
 .app-header {
   background: var(--secondary-bg);
   border-bottom: 1px solid var(--border-color);
   flex-shrink: 0;
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
 }
 
 .header-content {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0 24px;
-  height: 60px;
+  padding: 0 var(--spacing-lg);
+  height: 52px;
+  max-width: 1400px;
+  margin: 0 auto;
 }
 
-.logo {
+.header-left {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--text-primary);
+  gap: var(--spacing-xl);
+}
+
+.app-logo {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--radius-medium);
+  transition: background-color 0.2s ease;
+}
+
+.app-logo:hover {
+  background: var(--hover-bg);
 }
 
 .logo-icon {
-  height: 24px;
-  width: 24px;
+  width: 20px;
+  height: 20px;
+  color: var(--accent-blue);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.logo-text {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.024em;
 }
 
 .main-nav {
   display: flex;
-  gap: 4px;
+  gap: var(--spacing-xs);
 }
 
-.nav-item {
-  padding: 8px 16px;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  background: var(--primary-bg);
-  color: var(--text-primary);
-  cursor: pointer;
-  font-size: 14px;
+.nav-btn {
   display: flex;
   align-items: center;
-  gap: 6px;
-  transition: all 0.2s;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: var(--radius-medium);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-decoration: none;
 }
 
-.nav-item:hover {
+.nav-btn:hover {
   background: var(--hover-bg);
+  color: var(--text-primary);
 }
 
-.nav-item.active {
-  background: var(--accent-color);
-  color: white;
-  border-color: var(--accent-color);
+.nav-btn.active {
+  background: var(--button-bg);
+  color: var(--button-text);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.nav-icon {
+  font-size: 16px;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.nav-label {
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .header-actions {
   display: flex;
   align-items: center;
+  gap: var(--spacing-sm);
 }
 
 /* 应用主体样式 */

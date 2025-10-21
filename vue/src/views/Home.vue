@@ -3,26 +3,35 @@
     <Sidebar />
 
     <main class="main-content">
-      <ChatContainer
-          :current-theme="currentTheme"
-          @toggle-theme="$emit('toggle-theme')"
-          @send-message-from-container="handleSendMessage"
-          @edit-and-send="handleEditAndSend"
-          @regenerate="handleRegenerate"
-      />
-      <div class="input-area">
-        <!-- Stop Generation Button -->
-        <button v-if="chatStore.isTyping" @click="stopGeneration" class="stop-btn" title="中止生成">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-            <rect x="6" y="6" width="12" height="12"></rect>
-          </svg>
-          <span>中止</span>
-        </button>
-        <InputBox
-          @send-message="handleSendMessage"
-          @send-research="handleSendResearch"
-          @send-web-search="handleSendWebSearch"
+      <div class="chat-interface">
+        <ChatContainer
+            :current-theme="currentTheme"
+            @toggle-theme="$emit('toggle-theme')"
+            @send-message-from-container="handleSendMessage"
+            @edit-and-send="handleEditAndSend"
+            @regenerate="handleRegenerate"
         />
+
+        <!-- Input Area with Apple-style Design -->
+        <div class="input-area-wrapper">
+          <!-- Stop Generation Button -->
+          <div v-if="chatStore.isTyping" class="generation-controls">
+            <button @click="stopGeneration" class="stop-btn" title="中止生成">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="6" y="6" width="12" height="12"></rect>
+              </svg>
+              <span>中止生成</span>
+            </button>
+          </div>
+
+          <div class="input-container">
+            <InputBox
+              @send-message="handleSendMessage"
+              @send-research="handleSendResearch"
+              @send-web-search="handleSendWebSearch"
+            />
+          </div>
+        </div>
       </div>
     </main>
   </div>
@@ -327,55 +336,95 @@ const stopGeneration = () => {
   display: flex;
   height: 100vh;
   width: 100vw;
-  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+  background: var(--primary-bg);
 }
+
 .main-content {
   flex-grow: 1;
   display: flex;
   flex-direction: column;
   height: 100%;
   overflow-y: hidden;
-  background: transparent;
+  background: var(--primary-bg);
   position: relative;
 }
-.input-area {
-  padding: 1.5rem;
-  box-sizing: border-box;
-  width: 100%;
-  max-width: 1000px;
-  margin: 0 auto;
-  background: rgba(255, 255, 255, 0.8);
-  backdrop-filter: blur(20px);
-  border-radius: 16px 16px 0 0;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-bottom: none;
+
+.chat-interface {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 12px;
+  height: 100%;
+  position: relative;
 }
+
+.input-area-wrapper {
+  padding: var(--spacing-lg);
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.generation-controls {
+  display: flex;
+  justify-content: center;
+  animation: slideUp 0.3s ease;
+}
+
 .stop-btn {
-  padding: 8px 16px;
-  border: none;
-  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-  color: white;
-  border-radius: 20px;
-  cursor: pointer;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: none;
+  background: var(--accent-red);
+  color: white;
+  border-radius: var(--radius-large);
+  cursor: pointer;
   font-size: 14px;
-  font-weight: 600;
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
-  transition: all 0.3s ease;
+  font-weight: 500;
+  box-shadow: 0 2px 8px rgba(255, 59, 48, 0.3);
+  transition: all 0.2s ease;
 }
+
 .stop-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
+  background: #ff2d55;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(255, 59, 48, 0.4);
 }
-/* Ensure InputBox takes full width inside the flex container */
-.input-area > :last-child {
+
+.stop-btn:active {
+  transform: translateY(0);
+}
+
+.input-container {
   width: 100%;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .input-area-wrapper {
+    padding: var(--spacing-md);
+  }
+}
+
+@media (max-width: 480px) {
+  .input-area-wrapper {
+    padding: var(--spacing-sm);
+  }
 }
 </style>

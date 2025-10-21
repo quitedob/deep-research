@@ -121,17 +121,20 @@ watch(
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 24px;
+  padding: var(--spacing-md) var(--spacing-lg);
   flex-shrink: 0;
   border-bottom: 1px solid var(--border-color);
-  background-color: var(--primary-bg);
+  background-color: var(--secondary-bg);
   z-index: 10;
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
 }
 
 .scroll-area {
   flex: 1;
   overflow-y: auto;
-  padding: 25px;
+  padding: var(--spacing-lg);
+  scroll-behavior: smooth;
 }
 
 .welcome-message {
@@ -143,14 +146,34 @@ watch(
   align-items: center;
   justify-content: center;
   height: 100%;
+  padding: var(--spacing-xl) var(--spacing-lg);
 }
-.welcome-title { font-size: 32px; font-weight: 700; margin-bottom: 20px; }
-.welcome-subtitle { font-size: 18px; color: var(--text-secondary); margin-bottom: 40px; max-width: 600px; }
+
+.welcome-title {
+  font-size: 32px;
+  font-weight: 700;
+  margin-bottom: var(--spacing-md);
+  color: var(--text-primary);
+  letter-spacing: -0.032em;
+  background: var(--gradient-blue);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.welcome-subtitle {
+  font-size: 18px;
+  color: var(--text-secondary);
+  margin-bottom: var(--spacing-xl);
+  max-width: 600px;
+  line-height: 1.5;
+  font-weight: 400;
+}
 
 .scenario-cards {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 20px;
+  gap: var(--spacing-md);
   width: 100%;
   max-width: 600px;
 }
@@ -161,6 +184,48 @@ watch(
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: var(--spacing-lg);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .chat-header {
+    padding: var(--spacing-sm) var(--spacing-md);
+  }
+
+  .scroll-area {
+    padding: var(--spacing-md);
+  }
+
+  .welcome-title {
+    font-size: 28px;
+  }
+
+  .welcome-subtitle {
+    font-size: 16px;
+  }
+
+  .scenario-cards {
+    grid-template-columns: 1fr;
+    gap: var(--spacing-sm);
+  }
+}
+
+@media (max-width: 480px) {
+  .scroll-area {
+    padding: var(--spacing-sm);
+  }
+
+  .welcome-message {
+    padding: var(--spacing-lg) var(--spacing-md);
+  }
+
+  .welcome-title {
+    font-size: 24px;
+  }
+
+  .welcome-subtitle {
+    font-size: 14px;
+  }
 }
 </style>

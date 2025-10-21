@@ -391,12 +391,21 @@ onUnmounted(() => {
 <style scoped>
 .input-box-container {
   background-color: var(--input-bg);
-  padding: 8px 12px 12px; /* 调整内边距 */
-  border-radius: 20px; /* 调整圆角 */
-  border: 1px solid var(--border-color);
+  padding: var(--spacing-sm) var(--spacing-md) var(--spacing-md);
+  border-radius: var(--radius-xlarge);
+  border: 1px solid var(--input-border);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--spacing-sm);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  box-shadow: var(--shadow-elev);
+  transition: all 0.2s ease;
+}
+
+.input-box-container:focus-within {
+  border-color: var(--input-focus-border);
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1), var(--shadow-elev);
 }
 /* (新增) 包裹输入框和发送按钮的容器 */
 .main-input-wrapper {
@@ -409,20 +418,29 @@ onUnmounted(() => {
 }
 .text-input {
   width: 100%;
-  padding: 8px 0; /* 移除左右padding，由外部容器控制 */
+  padding: var(--spacing-sm) 0;
   border: none;
   background-color: transparent;
   color: var(--text-primary);
   font-size: 16px;
+  font-family: inherit;
   resize: none;
   box-sizing: border-box;
-  line-height: 1.5;
+  line-height: 1.47059;
   min-height: 24px;
   max-height: 200px;
   overflow-y: auto;
+  letter-spacing: -0.022em;
 }
-.text-input::placeholder { color: var(--text-secondary); opacity: 0.8; }
-.text-input:focus { outline: none; }
+
+.text-input::placeholder {
+  color: var(--text-tertiary);
+  opacity: 0.8;
+}
+
+.text-input:focus {
+  outline: none;
+}
 
 .attachments-bar {
   display: flex;
@@ -433,19 +451,43 @@ onUnmounted(() => {
 .attach-btn {
   background: none;
   border: none;
-  padding: 6px;
+  padding: var(--spacing-sm);
   color: var(--text-secondary);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  transition: color 0.2s, background-color 0.2s;
+  transition: all 0.2s ease;
+  position: relative;
 }
-.attach-btn svg { width: 20px; height: 20px; }
-.attach-btn:hover { color: var(--text-primary); background-color: var(--hover-bg); }
-.plus-btn svg { stroke-width: 2.5; }
-.mic-btn { margin-left: auto; }
+
+.attach-btn svg {
+  width: 20px;
+  height: 20px;
+  transition: transform 0.2s ease;
+}
+
+.attach-btn:hover {
+  color: var(--text-primary);
+  background-color: var(--hover-bg);
+}
+
+.attach-btn:hover svg {
+  transform: scale(1.1);
+}
+
+.attach-btn:active {
+  background-color: var(--active-bg);
+}
+
+.plus-btn svg {
+  stroke-width: 2.5;
+}
+
+.mic-btn {
+  margin-left: auto;
+}
 .plus-menu-container {
   position: relative;
 }
@@ -705,31 +747,40 @@ onUnmounted(() => {
   100% { transform: scale(1); opacity: 1; }
 }
 
-/* (新增) 发送按钮样式 */
+/* Apple-style Send Button */
 .send-btn {
-  flex-shrink: 0; /* 防止按钮被压缩 */
+  flex-shrink: 0;
   width: 36px;
   height: 36px;
   border-radius: 50%;
   border: none;
-  background-color: var(--button-bg);
+  background: var(--gradient-blue);
   color: var(--button-text);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: opacity 0.2s, background-color 0.2s;
-  padding-left: 2px; /* 微调图标位置 */
-  margin-bottom: 2px; /* 微调对齐 */
+  transition: all 0.2s ease;
+  padding-left: 2px;
+  margin-bottom: 2px;
+  box-shadow: 0 2px 8px rgba(0, 122, 255, 0.3);
 }
+
 .send-btn:hover {
-  opacity: 0.9;
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(0, 122, 255, 0.4);
 }
+
+.send-btn:active {
+  transform: scale(0.95);
+}
+
 .send-btn:disabled {
-  background-color: var(--secondary-bg);
-  color: var(--text-secondary);
+  background: var(--secondary-bg);
+  color: var(--text-quaternary);
   cursor: not-allowed;
-  opacity: 0.6;
+  box-shadow: none;
+  transform: none;
 }
 
 /* 文件上传弹窗样式 */
