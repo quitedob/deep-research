@@ -16,7 +16,7 @@ from ..api.deps import require_auth
 from ..api.errors import create_error_response, ErrorCodes, handle_database_error, handle_not_found_error, APIException
 from ..sqlmodel.models import User, AdminAuditLog
 from ..core.db import get_async_session
-from ..service.audit_service import AuditService, audit_admin_action, log_admin_action_dependency
+from ..services.audit_service import AuditService, audit_admin_action, log_admin_action_dependency
 from ..dao import AdminDAO, SubscriptionDAO, DocumentProcessingJobDAO, UsersDAO
 
 logger = logging.getLogger(__name__)

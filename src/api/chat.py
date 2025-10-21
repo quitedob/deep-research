@@ -13,7 +13,7 @@ from src.sqlmodel.models import User
 from src.core.llms.router.smart_router import ModelRouter, LLMMessage
 from src.services.session_service import store
 from src.core.security import sanitize_model_output
-from src.core.models.chat import ChatItem, ChatReq, ChatResp
+from src.schemas.chat import ChatItem, ChatReq, ChatResp
 
 logger = logging.getLogger(__name__)
 

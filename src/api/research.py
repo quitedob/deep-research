@@ -10,18 +10,17 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from src.services.session_service import store
+from src.schemas.research import ResearchReq, ResearchResponse
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-class ResearchReq(BaseModel):
-    query: str
-    session_id: Optional[str] = None
-
-@router.post("/research")
+@router.post("/research", response_model=ResearchResponse)
 async def start_research(req: ResearchReq):
-    """多智能体研究端点：使用LangGraph工作流进行深度研究。"""
+    """
+    多智能体研究端点：使用LangGraph工作流进行深度研究。
+    """
     try:
         session_id = await store.ensure_session(req.session_id)
 
@@ -63,22 +62,22 @@ async def start_research(req: ResearchReq):
             # 保存研究报告到会话存储
             await store.set_research_report(session_id, req.query, report_content)
 
-            return {
-                "session_id": session_id,
-                "status": "completed",
-                "documents_found": len(final_state.get("retrieved_documents", [])),
-                "iterations": final_state.get("iteration_count", 0)
-            }
+            return ResearchResponse(
+                session_id=session_id,
+                status="completed",
+                documents_found=len(final_state.get("retrieved_documents", [])),
+                iterations=final_state.get("iteration_count", 0)
+            )
         else:
             # 如果没有生成报告，创建一个错误报告
             error_report = f"# 研究失败\n\n查询: {req.query}\n\n错误: 工作流未能生成有效报告。请检查系统配置和日志。"
             await store.set_research_report(session_id, req.query, error_report)
 
-            return {
-                "session_id": session_id,
-                "status": "failed",
-                "error": "工作流未能生成有效报告"
-            }
+            return ResearchResponse(
+                session_id=session_id,
+                status="failed",
+                error="工作流未能生成有效报告"
+            )
 
     except Exception as e:
         logger.error(f"Research workflow error: {e}")
@@ -91,11 +90,11 @@ async def start_research(req: ResearchReq):
             error_report = f"# 研究错误\n\n查询: {req.query}\n\n系统错误: {str(e)}\n\n请稍后重试或联系管理员。"
             await store.set_research_report(session_id, req.query, error_report)
 
-            return {
-                "session_id": session_id,
-                "status": "error",
-                "error": str(e)
-            }
+            return ResearchResponse(
+                session_id=session_id,
+                status="error",
+                error=str(e)
+            )
         except Exception as inner_e:
             raise HTTPException(status_code=500, detail=f"研究失败: {str(e)}")
 
@@ -115,7 +114,8 @@ async def get_research_report(session_id: str):
 
 @router.get("/research/stream/{session_id}")
 async def research_stream(session_id: str):
-    """最小可用研究流式端点：发送若干进度事件，最后发送 completed 状态。
+    """
+    最小可用研究流式端点：发送若干进度事件，最后发送 completed 状态。
     前端收到 completed 后会调用 /api/research/{session_id} 拉取最终报告。
     """
     try:

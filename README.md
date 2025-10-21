@@ -43,7 +43,7 @@ src/
 │   ├── agent_llm_config.py         # Agent configuration API
 │   ├── auth.py                     # Authentication & authorization
 │   ├── billing.py                  # Payment integration
-│   ├── chat.py                     # Chat management
+│   ├── chat.py                     # Chat management ✅ (Schema固定)
 │   ├── deps.py                     # API dependencies
 │   ├── evidence.py                 # Evidence handling API
 │   ├── export.py                   # Export functionality API
@@ -58,9 +58,31 @@ src/
 │   ├── ocr.py                      # OCR processing API
 │   ├── ppt.py                      # PPT generation API
 │   ├── quota.py                    # Quota management
-│   ├── research.py                 # Research API
+│   ├── research.py                 # Research API ✅ (Response模型规范)
 │   ├── search.py                   # Search functionality
 │   └── v1/                         # API versioning
+├── schemas/                        # ✅ NEW! Data Validation Models (DTO/Schema Layer)
+│   ├── __init__.py                 # Unified export
+│   ├── base.py                     # Base response models (4 models)
+│   │   ├── BaseResponse
+│   │   ├── SuccessResponse[T]
+│   │   ├── ErrorResponse
+│   │   └── PaginatedResponse[T]
+│   ├── chat.py                     # Chat models (3 models)
+│   │   ├── ChatItem
+│   │   ├── ChatReq
+│   │   └── ChatResp
+│   ├── research.py                 # Research models (3 models)
+│   │   ├── ResearchReq
+│   │   ├── ResearchResponse
+│   │   └── ResearchStreamResponse
+│   ├── conversation.py             # Conversation models (3 models)
+│   │   ├── ConversationCreateRequest
+│   │   ├── ConversationMessageResponse
+│   │   └── ConversationSessionResponse
+│   └── common.py                   # Common models (2 models)
+│       ├── PaginationParams
+│       └── ListResponse[T]
 ├── core/                           # Core Business Logic (✅ Complete)
 │   ├── agents/                     # Agent System
 │   │   ├── base/                   # Base agent framework
