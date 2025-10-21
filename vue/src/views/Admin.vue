@@ -681,7 +681,7 @@
 </template>
 
 <script>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import api from '@/services/api';
 
 export default {
@@ -788,6 +788,7 @@ export default {
 
     const monitoringLoading = ref(false);
     const monitoringError = ref(null);
+    const isMounted = ref(false);
 
     // 标签页配置
     const tabs = ref([
@@ -800,9 +801,13 @@ export default {
     const loadStats = async () => {
       try {
         const response = await api.get('/admin/stats/users');
-        stats.value = response.data;
+        if (isMounted.value) {
+          stats.value = response.data;
+        }
       } catch (err) {
-        console.error('加载统计数据失败:', err);
+        if (isMounted.value) {
+          console.error('加载统计数据失败:', err);
+        }
       }
     };
     
@@ -837,18 +842,18 @@ export default {
     // 切换用户激活状态
     const toggleUserActive = async (user) => {
       const action = user.is_active ? '封禁' : '解封';
-      
-      if (!confirm(`确定要${action}用户 ${user.username} 吗？`)) {
+
+      if (!window.confirm(`确定要${action}用户 ${user.username} 吗？`)) {
         return;
       }
-      
+
       try {
         await api.post(`/admin/users/${user.id}/toggle-active`);
         await loadUsers();
         await loadStats();
-        alert(`用户已${action}`);
+        window.alert(`用户已${action}`);
       } catch (err) {
-        alert(`${action}失败: ` + (err.response?.data?.detail || err.message));
+        window.alert(`${action}失败: ` + (err.response?.data?.detail || err.message));
       }
     };
     
@@ -858,7 +863,7 @@ export default {
         const response = await api.get(`/admin/users/${user.id}`);
         selectedUser.value = response.data;
       } catch (err) {
-        alert('获取用户详情失败: ' + (err.response?.data?.detail || err.message));
+        window.alert('获取用户详情失败: ' + (err.response?.data?.detail || err.message));
       }
     };
     
@@ -869,19 +874,19 @@ export default {
     
     // 查看用户对话记录
     const viewUserConversations = () => {
-      alert('对话记录功能开发中...');
+      window.alert('对话记录功能开发中...');
       // TODO: 实现对话记录查看
     };
-    
+
     // 查看用户 API 使用
     const viewUserApiUsage = () => {
-      alert('API 使用记录功能开发中...');
+      window.alert('API 使用记录功能开发中...');
       // TODO: 实现 API 使用记录查看
     };
-    
+
     // 查看用户文档
     const viewUserDocuments = () => {
-      alert('文档任务功能开发中...');
+      window.alert('文档任务功能开发中...');
       // TODO: 实现文档任务查看
     };
 
@@ -1045,9 +1050,9 @@ export default {
         await loadModerationStats();
 
         closeReviewModal();
-        alert('审核结果已提交');
+        window.alert('审核结果已提交');
       } catch (err) {
-        alert('提交审核失败: ' + (err.response?.data?.detail || err.message));
+        window.alert('提交审核失败: ' + (err.response?.data?.detail || err.message));
       } finally {
         reviewSubmitting.value = false;
       }
@@ -1241,12 +1246,18 @@ export default {
     
     // 初始化
     onMounted(() => {
+      isMounted.value = true;
       loadStats();
       loadUsers();
       loadAuditLogs();
       loadModerationStats();
       loadModerationQueue();
       loadAllMonitoringData();
+    });
+
+    // 清理
+    onUnmounted(() => {
+      isMounted.value = false;
     });
 
     return {
@@ -1282,6 +1293,7 @@ export default {
       performanceMetrics,
       monitoringLoading,
       monitoringError,
+      loadStats,
       loadUsers,
       toggleUserActive,
       viewUserDetail,
@@ -1326,25 +1338,70 @@ export default {
 </script>
 
 <style scoped>
+:root {
+  --spacing-xs: 0.25rem;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 1.5rem;
+  --spacing-xl: 2rem;
+  --spacing-xxl: 3rem;
+  --primary-bg: #f5f5f5;
+  --card-bg: #ffffff;
+  --border-color: #e0e0e0;
+  --text-primary: #333333;
+  --text-secondary: #666666;
+  --radius-xlarge: 16px;
+  --shadow-elev: 0 4px 6px rgba(0, 0, 0, 0.1);
+  --shadow-elev-high: 0 8px 12px rgba(0, 0, 0, 0.15);
+  --blur: blur(10px);
+  --gradient-blue: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
 .admin-dashboard {
-  padding: 2rem;
+  padding: var(--spacing-xl);
   max-width: 1400px;
   margin: 0 auto;
+  background-color: var(--primary-bg);
+  min-height: 100vh;
+  font-family: var(--font-family);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 .admin-header {
-  margin-bottom: 2rem;
+  margin-bottom: var(--spacing-xxl);
+  text-align: center;
+  padding: var(--spacing-xl);
+  background: var(--card-bg);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border-radius: var(--radius-xlarge);
+  box-shadow: var(--shadow-elev);
+  border: 1px solid var(--border-color);
+  transition: all 0.3s ease;
+}
+
+.admin-header:hover {
+  box-shadow: var(--shadow-elev-high);
 }
 
 .admin-header h1 {
-  font-size: 2rem;
-  color: #333;
-  margin-bottom: 0.5rem;
+  font-size: 32px;
+  font-weight: 700;
+  background: var(--gradient-blue);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: var(--spacing-sm);
+  letter-spacing: -0.032em;
 }
 
 .subtitle {
-  color: #666;
-  font-size: 1rem;
+  color: var(--text-secondary);
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: -0.016em;
 }
 
 /* 统计卡片 */

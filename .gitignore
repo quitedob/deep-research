@@ -1,3 +1,4 @@
+.claude/*
 logs
 *.log
 npm-debug.log*
@@ -43,6 +44,7 @@ tmp*
 .vscode/
 .cursor/
 .kiro/
+.claude/
 trial*/
 dist/
 workspace/log_ngp.txt

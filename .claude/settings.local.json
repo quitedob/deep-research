@@ -9,7 +9,8 @@
       "Bash(cp \"D:\\python\\deep-research\\src\\core\\config\\logging\\logging.py\" \"D:\\python\\deep-research\\src\\config\\logging\\logging.py\")",
       "Bash(cp \"D:\\python\\deep-research\\src\\core\\config\\defensive_rules.txt\" \"D:\\python\\deep-research\\src\\config\\defensive_rules.txt\")",
       "Bash(npm run lint:check:*)",
-      "Bash(pip install:*)"
+      "Bash(pip install:*)",
+      "Bash(npm run build:*)"
     ],
     "deny": [],
     "ask": []
