@@ -1,0 +1,22 @@
+深度研究平台和Deep Research项目开发规范 本规范旨在统一团队开发标准，提高代码质量和协作效率。所有项目成员必须严格遵守
+1 通用规范和General
+1.1 文件编码 所有代码文件必须使用 UTF8 编码
+1.2 代码语言 所有代码，函数名，变量名，数据库字段名必须使用英文 允许并鼓励使用中文编写注释，特别是复杂的业务逻辑
+1.3 配置管理 严禁在代码中硬编码任何敏感信息和如API密钥，数据库密码 后端配置应使用 env 文件和 src和core和config.py 统一管理 前端配置应使用 env.development 和 env.production 文件
+1.4 日志规范 关键业务流程，错误捕获，重要状态变更必须记录日志 日志应包含清晰的上下文信息和如用户ID，请求ID
+2 架构与目录规范和Architecture
+2.1 前后端分离 src 目录为后端 Python 和FastAPI 代码 web 目录为前端 Vue.js 代码 前后端通过 src和api 定义的 RESTful API 进行通信
+2.2 后端分层和Python 必须严格遵守分层架构 我们的服务是经过api ->service（调用core的方法） -> dao(model) src和api 和API层和控制器 负责处理 HTTP 请求，响应，路径参数，查询参数 使用 FastAPI 的 Depends 进行依赖注入和如获取数据库会话 负责验证输入数据和使用 Pydantic和SQLModel 模型 严禁在此层编写核心业务逻辑 必须调用 src和服务s 层来处理业务 src和服务s 和服务层 负责处理所有核心业务逻辑 严禁直接操作数据库和应调用 sqlmodel 或 Repository 严禁包含任何 FastAPI 或 HTTP 相关的代码和如 Request, Response 应是纯粹的业务逻辑实现 src和sqlmodel 和数据模型和仓库层 负责定义所有数据库表结构和使用 SQLModel 负责提供数据库的增删改查和CRUD 操作 src和core 和核心配置 存放项目核心配置，如数据库连接 和db.py，配置加载 和config.py，缓存 和cache.py
+2.3 前端分层和Vue.js 必须遵守组件化和状态管理规范 web和src和views 和视图层 页面级组件，负责组合 components 并处理页面逻辑 web和src和components 和组件层 可复用的 UI 组件 web和src和服务s 和服务层 负责所有与后端 API 的通信和如 api.js。组件和视图必须调用 service，严禁在组件内直接使用 axios和fetch web和src和stores 和状态管理层 使用 Pinia 统一管理全局状态
+3 后端开发规范和Backend Development Standards
+3.1 异步优先和Async First 所有数据库操作，外部 API 调用等 IO 密集型任务，必须使用 async和await 语法 数据库引擎必须使用异步引擎和如 asyncio 配合 AsyncEngine
+3.2 类型提示和Type Hinting 所有函数定义和参数和返回值必须包含 Python 3.10+ 的类型提示 变量声明时，鼓励使用类型提示
+3.3 依赖注入和Dependency Injection 必须使用 FastAPI 的依赖注入系统 和Depends 来管理数据库会话 和Session，用户认证，配置等依赖
+3.4 数据库和SQLModel 所有数据表模型必须在 src和sqlmodel 中定义，并继承自 SQLModel 严禁在 api 层或 services 层编写原生 SQL 语句和除非性能极端需要，应优先使用 ORM
+3.5 依赖管理和Dependency Management 所有新增的 Python 依赖库，必须更新到 requirements.txt 文件中
+4 前端开发规范和Frontend Vue.js
+4.1 Vue 3 规范 必须使用 script setup 语法糖进行开发 必须使用组合式 API 和Composition API，如 ref, reactive, onMounted
+4.2 状态管理 跨页面，跨组件共享的全局状态和如用户信息，Token，必须存放在 Pinia store 和web和src和stores 中 临时状态和如 localStorage, sessionStorage仅用于持久化和如Token，欢迎页标记
+4.3 路由 页面跳转必须使用 vue-router 和useRouter 路由定义应集中管理
+4.4 样式 组件的 CSS 样式必须添加 scoped 属性，防止全局样式污染
+4.5 依赖管理 所有新增的 Node.js 依赖库，必须更新到 package.json 文件中
