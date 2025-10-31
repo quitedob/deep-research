@@ -7,7 +7,7 @@ DSL验证器
 
 import logging
 import xml.etree.ElementTree as ET
-from typing import Tuple
+from typing import Tuple, Dict, Any
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +97,7 @@ def extract_sections_count(dsl_content: str) -> int:
         return 0
 
 
-def get_dsl_metadata(dsl_content: str) -> dict:
+def get_dsl_metadata(dsl_content: str) -> Dict[str, Any]:
     """
     提取DSL元数据
 

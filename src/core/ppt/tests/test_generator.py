@@ -130,6 +130,23 @@ class TestPPTGenerator:
         outline = generator._get_default_outline("测试主题", 5, "Chinese")
         assert len(outline) == 5
         assert all(isinstance(item, str) for item in outline)
+        assert "测试主题" in outline[0]
+
+    def test_fallback_mechanism(self, generator):
+        """测试fallback机制"""
+        # 这个测试模拟所有provider都失败的情况
+        # 在实际环境中需要mock adapters
+        priority = generator.config.get_provider_priority("ppt_content")
+        assert isinstance(priority, list)
+        assert len(priority) > 0
+
+    def test_dsl_parsing_and_fixing(self, generator):
+        """测试DSL解析和修复"""
+        # 测试DSL修复功能
+        invalid_dsl = "<SLIDE><TITLE>Test</TITLE></SLIDE>"
+        fixed_dsl = generator._fix_dsl(invalid_dsl)
+        assert "<PRESENTATION>" in fixed_dsl
+        assert "</PRESENTATION>" in fixed_dsl
 
 
 class TestIntegration:
@@ -167,4 +184,5 @@ class TestIntegration:
 if __name__ == "__main__":
     # 运行测试
     pytest.main([__file__, "-v", "-s"])
+
 

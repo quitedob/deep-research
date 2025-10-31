@@ -264,3 +264,4 @@ def get_domestic_adapter() -> DomesticAdapter:
         _domestic_adapter = DomesticAdapter()
     return _domestic_adapter
 
+

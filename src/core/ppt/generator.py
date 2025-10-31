@@ -281,11 +281,28 @@ class PPTGenerator:
         返回:
             修复后的DSL内容
         """
-        # 简单的修复策略：确保有PRESENTATION标签
-        if "<PRESENTATION>" not in dsl_content:
-            dsl_content = f"<PRESENTATION>\n{dsl_content}\n</PRESENTATION>"
+        try:
+            # 简单的修复策略：确保有PRESENTATION标签
+            if "<PRESENTATION>" not in dsl_content:
+                dsl_content = f"<PRESENTATION>\n{dsl_content}\n</PRESENTATION>"
+                logger.info("为DSL添加了PRESENTATION根标签")
 
-        return dsl_content
+            # 确保有结束标签
+            if dsl_content.count("<PRESENTATION>") > dsl_content.count("</PRESENTATION>"):
+                dsl_content += "\n</PRESENTATION>"
+                logger.info("为DSL添加了缺失的结束标签")
+
+            return dsl_content
+
+        except Exception as e:
+            logger.error(f"DSL修复失败: {str(e)}")
+            # 返回最基本的有效DSL
+            return """<PRESENTATION>
+    <SECTION layout="TITLE">
+        <TITLE>演示文稿</TITLE>
+        <SUBTITLE>自动生成</SUBTITLE>
+    </SECTION>
+</PRESENTATION>"""
 
 
 # 全局实例
@@ -307,4 +324,5 @@ async def create_presentation(params: Dict[str, Any]) -> Dict[str, Any]:
         _generator = PPTGenerator()
 
     return await _generator.create_presentation(params)
+
 

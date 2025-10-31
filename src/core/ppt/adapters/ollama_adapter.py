@@ -248,3 +248,4 @@ class OllamaAdapter:
         """
         return 0.0  # Ollama本地运行，无API费用
 
+

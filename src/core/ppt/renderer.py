@@ -8,8 +8,10 @@ PPTX渲染器
 import logging
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 from io import BytesIO
+
+from .image_service import get_image_service
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +37,9 @@ class PPTXRenderer:
             "TITLE", "BULLETS", "COLUMNS", "IMAGE",
             "ICONS", "TIMELINE", "CHART"
         ]
+
+        # 集成图像服务
+        self.image_service = get_image_service()
 
     async def render_dsl_to_pptx(
         self,
@@ -172,6 +177,49 @@ class PPTXRenderer:
                     })
                 slide_data["columns"] = columns
 
+        elif layout == "IMAGE":
+            caption_elem = section.find("CAPTION")
+            if caption_elem is not None and caption_elem.text:
+                slide_data["caption"] = caption_elem.text.strip()
+
+        elif layout == "ICONS":
+            content_elem = section.find("CONTENT")
+            if content_elem is not None:
+                items = []
+                for item in content_elem.findall("ITEM"):
+                    icon_elem = item.find("ICON")
+                    heading_elem = item.find("HEADING")
+                    text_elem = item.find("TEXT")
+                    items.append({
+                        "icon": icon_elem.text.strip() if icon_elem is not None and icon_elem.text else "",
+                        "heading": heading_elem.text.strip() if heading_elem is not None and heading_elem.text else "",
+                        "text": text_elem.text.strip() if text_elem is not None and text_elem.text else ""
+                    })
+                slide_data["items"] = items
+
+        elif layout == "TIMELINE":
+            content_elem = section.find("CONTENT")
+            if content_elem is not None:
+                events = []
+                for event in content_elem.findall("EVENT"):
+                    date_elem = event.find("DATE")
+                    title_elem = event.find("TITLE")
+                    desc_elem = event.find("DESCRIPTION")
+                    events.append({
+                        "date": date_elem.text.strip() if date_elem is not None and date_elem.text else "",
+                        "title": title_elem.text.strip() if title_elem is not None and title_elem.text else "",
+                        "description": desc_elem.text.strip() if desc_elem is not None and desc_elem.text else ""
+                    })
+                slide_data["events"] = events
+
+        elif layout == "CHART":
+            chart_type_elem = section.find("CHART_TYPE")
+            data_desc_elem = section.find("DATA_DESCRIPTION")
+            if chart_type_elem is not None and chart_type_elem.text:
+                slide_data["chart_type"] = chart_type_elem.text.strip()
+            if data_desc_elem is not None and data_desc_elem.text:
+                slide_data["data_description"] = data_desc_elem.text.strip()
+
         # 提取图像查询（如果有）
         image_query = section.find("IMAGE_QUERY")
         if image_query is not None and image_query.text:
@@ -238,8 +286,16 @@ class PPTXRenderer:
             self._render_bullets_slide(prs, slide_data)
         elif layout_type == "COLUMNS":
             self._render_columns_slide(prs, slide_data)
+        elif layout_type == "IMAGE":
+            self._render_image_slide(prs, slide_data)
+        elif layout_type == "ICONS":
+            self._render_icons_slide(prs, slide_data)
+        elif layout_type == "TIMELINE":
+            self._render_timeline_slide(prs, slide_data)
+        elif layout_type == "CHART":
+            self._render_chart_slide(prs, slide_data)
         else:
-            # 其他布局暂时使用BULLETS布局
+            # 未知布局使用BULLETS布局
             self._render_bullets_slide(prs, slide_data)
 
     def _render_title_slide(self, prs: Presentation, slide_data: Dict[str, Any]):
@@ -307,6 +363,112 @@ class PPTXRenderer:
                 p.level = 1
                 p.font.size = Pt(16)
 
+    def _render_image_slide(self, prs: Presentation, slide_data: Dict[str, Any]):
+        """渲染图像页"""
+        slide_layout = prs.slide_layouts[1]  # 标题和内容布局
+        slide = prs.slides.add_slide(slide_layout)
+
+        title = slide.shapes.title
+        title.text = slide_data.get("title", "")
+
+        body_shape = slide.placeholders[1]
+        text_frame = body_shape.text_frame
+        text_frame.clear()
+
+        caption = slide_data.get("caption", "图片说明")
+        p = text_frame.add_paragraph()
+        p.text = caption
+        p.font.size = Pt(18)
+        p.alignment = PP_ALIGN.CENTER
+
+        # TODO: 如果有image_service，可以添加实际图片
+        # 目前使用文本占位符
+
+    def _render_icons_slide(self, prs: Presentation, slide_data: Dict[str, Any]):
+        """渲染图标页"""
+        slide_layout = prs.slide_layouts[1]
+        slide = prs.slides.add_slide(slide_layout)
+
+        title = slide.shapes.title
+        title.text = slide_data.get("title", "")
+
+        body_shape = slide.placeholders[1]
+        text_frame = body_shape.text_frame
+        text_frame.clear()
+
+        items = slide_data.get("items", [])
+        for item in items:
+            heading = item.get("heading", "")
+            text = item.get("text", "")
+            icon = item.get("icon", "📌")
+
+            if heading:
+                p = text_frame.add_paragraph()
+                p.text = f"{icon} {heading}"
+                p.level = 0
+                p.font.size = Pt(18)
+
+            if text:
+                p = text_frame.add_paragraph()
+                p.text = text
+                p.level = 1
+                p.font.size = Pt(16)
+
+    def _render_timeline_slide(self, prs: Presentation, slide_data: Dict[str, Any]):
+        """渲染时间线页"""
+        slide_layout = prs.slide_layouts[1]
+        slide = prs.slides.add_slide(slide_layout)
+
+        title = slide.shapes.title
+        title.text = slide_data.get("title", "")
+
+        body_shape = slide.placeholders[1]
+        text_frame = body_shape.text_frame
+        text_frame.clear()
+
+        events = slide_data.get("events", [])
+        for event in events:
+            date = event.get("date", "")
+            event_title = event.get("title", "")
+            description = event.get("description", "")
+
+            if date and event_title:
+                p = text_frame.add_paragraph()
+                p.text = f"{date}: {event_title}"
+                p.level = 0
+                p.font.size = Pt(18)
+
+            if description:
+                p = text_frame.add_paragraph()
+                p.text = description
+                p.level = 1
+                p.font.size = Pt(16)
+
+    def _render_chart_slide(self, prs: Presentation, slide_data: Dict[str, Any]):
+        """渲染图表页"""
+        slide_layout = prs.slide_layouts[1]
+        slide = prs.slides.add_slide(slide_layout)
+
+        title = slide.shapes.title
+        title.text = slide_data.get("title", "")
+
+        body_shape = slide.placeholders[1]
+        text_frame = body_shape.text_frame
+        text_frame.clear()
+
+        chart_type = slide_data.get("chart_type", "bar")
+        data_description = slide_data.get("data_description", "数据可视化")
+
+        p = text_frame.add_paragraph()
+        p.text = f"图表类型: {chart_type}"
+        p.font.size = Pt(18)
+
+        p = text_frame.add_paragraph()
+        p.text = data_description
+        p.font.size = Pt(16)
+
+        # TODO: 未来可以集成真实的图表库
+
     def _load_template(self, template_name: str) -> Presentation:
         """加载模板"""
         # 这里可以根据template_name加载不同的模板
@@ -324,4 +486,5 @@ def get_renderer() -> PPTXRenderer:
     if _renderer is None:
         _renderer = PPTXRenderer()
     return _renderer
+
 

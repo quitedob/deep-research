@@ -192,3 +192,4 @@ def get_ppt_config() -> PPTConfig:
         _ppt_config = PPTConfig()
     return _ppt_config
 
+
