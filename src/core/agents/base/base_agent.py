@@ -1,31 +1,33 @@
 # -*- coding: utf-8 -*-
 """
-Agent 基础类 - 参考 AgentScope 的 AgentBase
+Agent 基础类 - 基于 AgentScope v1.0 的 AgentBase
 """
 import asyncio
 import logging
-try:
-    import shortuuid
-    SHORTUUID_AVAILABLE = True
-except ImportError:
-    SHORTUUID_AVAILABLE = False
-    import uuid
-    shortuuid = None
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Callable
+from typing import Any, Dict, List, Optional, Callable, Union, TYPE_CHECKING
 from dataclasses import dataclass, field
 from datetime import datetime
 from collections import OrderedDict
 
-from ..message import Msg
-from ..memory.conversation_buffer import ConversationBuffer
+from agentscope import AgentBase as AgentScopeAgentBase
+from agentscope.message import Msg
+from agentscope.memory import MemoryBase
+from agentscope.tools import ToolBase
+from agentscope.hooks import Hook
+
+# Import long-term memory
+from ..memory import LongTermMemoryBase, create_long_term_memory
+
+if TYPE_CHECKING:
+    from agentscope.session import Session
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class AgentConfig:
-    """Agent 配置类 - 基于 tech.txt Prompt 工程"""
+    """Agent 配置类 - 基于 AgentScope v1.0 和 tech.txt Prompt 工程"""
     name: str
     role: str
     system_prompt: str
@@ -36,6 +38,13 @@ class AgentConfig:
     tools: List[str] = field(default_factory=list)
     memory_type: str = "conversation"
     max_memory_size: int = 100
+
+    # AgentScope v1.0 特定配置
+    use_react: bool = True  # 是否使用 ReAct 模式
+    enable_async: bool = True  # 启用异步执行
+    enable_parallel_tools: bool = True  # 启用并行工具调用
+    enable_long_term_memory: bool = True  # 启用长期记忆（AgentScope v1.0 默认启用）
+    long_term_memory_type: str = "mem0_agent_control"  # 长期记忆类型
 
     # Prompt 工程字段 (基于 tech.txt)
     role_definition: str = ""  # 角色设定
@@ -49,133 +58,86 @@ class AgentConfig:
     quality_criteria: List[str] = field(default_factory=list)  # 质量标准
 
 
-class AgentBase(ABC):
-    """Agent 基础类 - 参考 AgentScope 设计"""
-    
-    supported_hook_types: list[str] = [
-        "pre_reply",
-        "post_reply",
-        "pre_observe",
-        "post_observe",
-    ]
-    
-    def __init__(self, config: AgentConfig):
+class AgentBase(AgentScopeAgentBase):
+    """Agent 基础类 - 基于 AgentScope v1.0 的 AgentBase"""
+
+    def __init__(
+        self,
+        name: str,
+        config: AgentConfig,
+        memory: Optional[MemoryBase] = None,
+        tools: Optional[List[ToolBase]] = None,
+        hooks: Optional[List[Hook]] = None,
+        long_term_memory: Optional[LongTermMemoryBase] = None,
+    ):
+        # 调用 AgentScope 的父类初始化
+        super().__init__(
+            name=name,
+            memory=memory,
+            tools=tools or [],
+            hooks=hooks or [],
+        )
+
         self.config = config
-        self.id = shortuuid.uuid() if SHORTUUID_AVAILABLE else str(uuid.uuid4())
-        self.name = config.name
         self.role = config.role
-        
-        # 初始化记忆系统
-        self.memory = ConversationBuffer(max_messages=config.max_memory_size)
-        
-        # Hook 系统
-        self._instance_pre_reply_hooks: Dict[str, Callable] = OrderedDict()
-        self._instance_post_reply_hooks: Dict[str, Callable] = OrderedDict()
-        self._instance_pre_observe_hooks: Dict[str, Callable] = OrderedDict()
-        self._instance_post_observe_hooks: Dict[str, Callable] = OrderedDict()
-        
+
+        # AgentScope v1.0 特性
+        self._use_react = config.use_react
+        self._enable_async = config.enable_async
+        self._enable_parallel_tools = config.enable_parallel_tools
+
+        # 长期记忆系统
+        self.long_term_memory = long_term_memory
+        if config.enable_long_term_memory and long_term_memory is None:
+            try:
+                # 自动创建长期记忆
+                memory_type = config.long_term_memory_type
+                self.long_term_memory = create_long_term_memory(
+                    memory_id=f"{name}_ltm",
+                    memory_type=memory_type
+                )
+                logger.info(f"Auto-created long-term memory ({memory_type}) for agent {name}")
+            except Exception as e:
+                logger.warning(f"Failed to create long-term memory for agent {name}: {e}")
+                self.long_term_memory = None
+
         # 状态管理
         self._is_active = True
         self._last_activity = datetime.now()
-        self._disable_console_output = False
-        
-        logger.info(f"Agent {self.name} ({self.id}) initialized")
+
+        logger.info(f"AgentScope v1.0 Agent {self.name} initialized with ReAct: {self._use_react}, LTM: {self.long_term_memory is not None}")
     
     @abstractmethod
-    async def reply(self, msg: Msg, **kwargs) -> Msg:
-        """生成回复"""
+    async def reply(self, msg: Msg, session: Optional["Session"] = None, **kwargs) -> Msg:
+        """生成回复 - AgentScope v1.0 模式"""
         pass
-    
-    async def observe(self, msg: Msg | list[Msg] | None) -> None:
-        """观察消息"""
-        # 执行 pre-observe hooks
-        for hook in self._instance_pre_observe_hooks.values():
-            try:
-                await hook(self, msg)
-            except Exception as e:
-                logger.error(f"Pre-observe hook error: {e}")
-        
-        # 添加到记忆
-        if isinstance(msg, list):
-            for m in msg:
-                await self.memory.add_message(m.role, m.content)
-        elif msg:
-            await self.memory.add_message(msg.role, msg.content)
-        
-        self._last_activity = datetime.now()
-        
-        # 执行 post-observe hooks
-        for hook in self._instance_post_observe_hooks.values():
-            try:
-                await hook(self, msg)
-            except Exception as e:
-                logger.error(f"Post-observe hook error: {e}")
-    
-    async def __call__(self, msg: Msg, **kwargs) -> Msg:
-        """调用 Agent"""
-        # 执行 pre-reply hooks
-        for hook in self._instance_pre_reply_hooks.values():
-            try:
-                msg = await hook(self, msg) or msg
-            except Exception as e:
-                logger.error(f"Pre-reply hook error: {e}")
-        
-        # 观察输入消息
-        await self.observe(msg)
-        
-        # 生成回复
-        reply_msg = await self.reply(msg, **kwargs)
-        
-        # 执行 post-reply hooks
-        for hook in self._instance_post_reply_hooks.values():
-            try:
-                reply_msg = await hook(self, reply_msg) or reply_msg
-            except Exception as e:
-                logger.error(f"Post-reply hook error: {e}")
-        
-        # 观察回复消息
-        await self.observe(reply_msg)
-        
-        return reply_msg
-    
-    def register_hook(self, hook_type: str, name: str, hook: Callable):
-        """注册 Hook"""
-        if hook_type not in self.supported_hook_types:
-            raise ValueError(f"Invalid hook type: {hook_type}")
-        
-        hook_dict = getattr(self, f"_instance_{hook_type}_hooks")
-        hook_dict[name] = hook
-        logger.info(f"Registered {hook_type} hook: {name}")
-    
-    def remove_hook(self, hook_type: str, name: str):
-        """移除 Hook"""
-        hook_dict = getattr(self, f"_instance_{hook_type}_hooks")
-        if name in hook_dict:
-            del hook_dict[name]
-            logger.info(f"Removed {hook_type} hook: {name}")
-    
+
     def get_memory_summary(self) -> str:
         """获取记忆摘要"""
-        return self.memory.get_conversation_text()
-    
+        if hasattr(self.memory, 'get_memory_text'):
+            return self.memory.get_memory_text()
+        return "Memory summary not available"
+
     def clear_memory(self):
         """清空记忆"""
-        self.memory.clear()
+        if hasattr(self.memory, 'clear'):
+            self.memory.clear()
         logger.info(f"Cleared memory for agent {self.name}")
-    
+
     def get_status(self) -> Dict[str, Any]:
         """获取 Agent 状态"""
         return {
-            "id": self.id,
             "name": self.name,
             "role": self.role,
             "is_active": self._is_active,
             "last_activity": self._last_activity.isoformat(),
-            "memory_size": self.memory.get_message_count(),
+            "use_react": self._use_react,
+            "enable_async": self._enable_async,
+            "enable_parallel_tools": self._enable_parallel_tools,
             "capabilities": self.config.capabilities,
-            "tools": self.config.tools
+            "tools": [tool.name for tool in self.tools] if self.tools else []
         }
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
         return {
@@ -185,14 +147,85 @@ class AgentBase(ABC):
                 "system_prompt": self.config.system_prompt,
                 "model_name": self.config.model_name,
                 "capabilities": self.config.capabilities,
-                "tools": self.config.tools
+                "tools": self.config.tools,
+                "use_react": self.config.use_react,
+                "enable_async": self.config.enable_async,
+                "enable_parallel_tools": self.config.enable_parallel_tools,
+                "enable_long_term_memory": self.config.enable_long_term_memory
             },
             "status": self.get_status()
         }
-    
+
     def set_console_output_enabled(self, enabled: bool) -> None:
         """启用或禁用控制台输出"""
-        self._disable_console_output = not enabled
+        # AgentScope v1.0 处理控制台输出
+        pass
+
+    # === AgentScope v1.0 长期记忆方法 ===
+
+    def store_long_term_memory(self, content: str, metadata: Dict[str, Any] = None) -> bool:
+        """存储长期记忆"""
+        if self.long_term_memory is None:
+            logger.debug(f"No long-term memory configured for agent {self.name}")
+            return False
+
+        try:
+            self.long_term_memory.store_memory(self, content, metadata)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to store long-term memory for agent {self.name}: {e}")
+            return False
+
+    def retrieve_long_term_memory(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
+        """检索长期记忆"""
+        if self.long_term_memory is None:
+            logger.debug(f"No long-term memory configured for agent {self.name}")
+            return []
+
+        try:
+            return self.long_term_memory.retrieve_memory(self, query, top_k)
+        except Exception as e:
+            logger.error(f"Failed to retrieve long-term memory for agent {self.name}: {e}")
+            return []
+
+    def update_long_term_memory(self, memory_id: str, content: str, metadata: Dict[str, Any] = None) -> bool:
+        """更新长期记忆"""
+        if self.long_term_memory is None:
+            logger.debug(f"No long-term memory configured for agent {self.name}")
+            return False
+
+        try:
+            return self.long_term_memory.update_memory(memory_id, content, metadata)
+        except Exception as e:
+            logger.error(f"Failed to update long-term memory for agent {self.name}: {e}")
+            return False
+
+    def delete_long_term_memory(self, memory_id: str) -> bool:
+        """删除长期记忆"""
+        if self.long_term_memory is None:
+            logger.debug(f"No long-term memory configured for agent {self.name}")
+            return False
+
+        try:
+            return self.long_term_memory.delete_memory(memory_id)
+        except Exception as e:
+            logger.error(f"Failed to delete long-term memory for agent {self.name}: {e}")
+            return False
+
+    def get_memory_summary(self) -> Dict[str, Any]:
+        """获取记忆状态摘要"""
+        summary = {
+            "short_term_memory": {
+                "available": hasattr(self, 'memory') and self.memory is not None,
+                "size": getattr(self.memory, 'size', lambda: 0)() if hasattr(self.memory, 'size') else 0
+            },
+            "long_term_memory": {
+                "available": self.long_term_memory is not None,
+                "type": type(self.long_term_memory).__name__ if self.long_term_memory else None,
+                "mode": getattr(self.long_term_memory, 'memory_type', None) if self.long_term_memory else None
+            }
+        }
+        return summary
 
     def build_enhanced_system_prompt(self) -> str:
         """构建增强的系统提示词 (基于 tech.txt 策略)"""

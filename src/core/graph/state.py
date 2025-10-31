@@ -1,32 +1,37 @@
 # -*- coding: utf-8 -*-
 """
-定义多智能体工作流的共享状态。
+定义多智能体工作流的共享状态 - 基于 AgentScope v1.0
 """
 
-from typing import List, Optional, TypedDict, Dict, Any
+from dataclasses import field
+from langgraph.graph import MessagesState
+from typing import List, Optional
+from src.prompts.planner_model import Plan
+from src.rag import Resource
 
 
-class GraphState(TypedDict):
-    """
-    定义图的共享状态。每个键都是一个通道，节点可以从中读取或向其写入。
-    """
-    # 输入
-    original_query: str
+class State(MessagesState):
+    """State for the agent system, extends MessagesState with additional fields."""
 
-    # 计划
-    research_plan: Optional[List[Dict[str, Any]]]
+    # Runtime Variables
+    locale: str = "en-US"
+    research_topic: str = ""
+    clarified_research_topic: str = ""  # Complete/final clarified topic with all clarification rounds
+    observations: list[str] = []
+    resources: list[Resource] = []
+    plan_iterations: int = 0
+    current_plan: Plan | str = None
+    final_report: str = ""
+    auto_accepted_plan: bool = False
+    enable_background_investigation: bool = True
+    background_investigation_results: str = None
 
-    # 智能体产出
-    retrieved_documents: Optional[List[Dict[str, Any]]]
-    analysis_results: Optional[Dict[str, Any]]
-    draft_report: Optional[str]
+    # Clarification state tracking (disabled by default)
+    enable_clarification: bool = False  # Enable/disable clarification feature (default: False)
+    clarification_rounds: int = 0
+    clarification_history: list[str] = field(default_factory=list)
+    is_clarification_complete: bool = False
+    max_clarification_rounds: int = 3  # Default: 3 rounds (only used when enable_clarification=True)
 
-    # 工作流控制
-    next_action: str
-    error_log: List[str]
-    iteration_count: int
-
-    # 人在环路 (HITL)
-    human_review_required: bool
-    feedback_request: Optional[str]
-    user_feedback: Optional[str]
+    # Workflow control
+    goto: str = "planner"  # Default next node

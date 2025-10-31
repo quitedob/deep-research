@@ -1,0 +1,799 @@
+# 深度研究平台设计规则 (Deep Research Platform Design Rules)
+# 基于 AgentScope v1.0 和 LangGraph 的深度研究系统设计规范
+
+## 📋 概述
+
+本文档定义了深度研究平台的核心设计规则，基于 AgentScope v1.0 框架和 LangGraph 工作流编排，整合 MCP 协议支持，实现智能化的深度研究流程。
+
+## 🏗️ 系统架构原则
+
+### 1. 分层架构设计
+```
+前端 (Vue.js) ← REST API → 后端 (FastAPI)
+    ↑                              ↑
+    └─────────────┘     └─────────────┘
+        工作流层 (LangGraph + AgentScope)
+    ↑                              ↑
+    └─────────────┘     └─────────────┘
+        数据层 (PostgreSQL + SQLModel)
+```
+
+### 2. 智能体分层
+- **协调器 (Coordinator)**: 用户交互、任务规划、澄清确认
+- **规划器 (Planner)**: 研究计划生成、步骤分解、资源分配
+- **研究员 (Researcher)**: 信息收集、数据分析、证据链构建
+- **编码员 (Coder)**: 代码执行、数据处理、技术实现
+- **报告员 (Reporter)**: 内容生成、结构化写作、结果总结
+
+## 🤖 AgentScope v1.0 集成规则
+
+### 1. 智能体设计规范
+
+#### 1.1 AgentBase 继承
+```python
+class ResearchAgent(AgentBase, AgentScopeReActAgent):
+    """基于 AgentScope v1.0 的研究智能体"""
+
+    def __init__(self, name: str, config: AgentConfig):
+        # 调用 AgentScope 父类初始化
+        AgentScopeReActAgent.__init__(self, name=name, model=model, ...)
+        # 调用自定义 AgentBase 初始化
+        AgentBase.__init__(self, name=name, config=config, ...)
+
+    async def reply(self, msg: Msg, session=None, **kwargs) -> Msg:
+        # 实现 AgentScope v1.0 reply 协议
+        pass
+```
+
+#### 1.2 配置标准化
+```python
+@dataclass
+class AgentConfig:
+    """智能体配置 (AgentScope v1.0 兼容)"""
+    # 基础配置
+    name: str
+    role: str
+    system_prompt: str
+
+    # AgentScope v1.0 特性
+    use_react: bool = True                    # 启用 ReAct 模式
+    enable_async: bool = True                 # 异步执行
+    enable_parallel_tools: bool = True        # 并行工具调用
+    enable_long_term_memory: bool = True      # 长期记忆
+
+    # 记忆配置
+    long_term_memory_type: str = "mem0_agent_control"
+```
+
+#### 1.3 钩子系统集成
+```python
+# 实现 AgentScope 钩子协议
+async def pre_reply_hook(self, agent, msg):
+    """推理前钩子"""
+    # 激活长期记忆检索
+    memories = agent.retrieve_long_term_memory(msg.content)
+    return memories
+
+async def post_reply_hook(self, agent, reply_msg):
+    """推理后钩子"""
+    # 存储重要信息到长期记忆
+    if self._is_important_content(reply_msg.content):
+        agent.store_long_term_memory(reply_msg.content)
+```
+
+### 2. 长期记忆系统
+
+#### 2.1 记忆类型选择
+- **Agent-Controlled**: 智能体自主决定存储内容
+- **Static-Controlled**: 基于规则的自动存储
+
+#### 2.2 记忆存储策略
+```python
+def _should_store_memory(self, content: str, metadata: dict) -> bool:
+    """记忆存储判断逻辑"""
+    # 1. 内容长度检查 (>50字符)
+    if len(content.strip()) < 50:
+        return False
+
+    # 2. 重要性关键词检测
+    importance_keywords = [
+        '结论', '发现', '证据', '证明', '结果', '关键',
+        '重要', '显著', '突破', '创新', '解决'
+    ]
+
+    # 3. 重复内容过滤
+    # 4. 时间衰减策略
+    return self._calculate_importance_score(content) > 0.7
+```
+
+## 🔄 LangGraph 工作流设计规则
+
+### 1. 状态设计规范
+
+#### 1.1 状态类定义
+```python
+class State(MessagesState):
+    """研究工作流状态 (基于 AgentScope MessagesState)"""
+
+    # 运行时变量
+    locale: str = "zh-CN"
+    research_topic: str = ""
+    clarified_research_topic: str = ""
+
+    # 工作流控制
+    current_plan: Plan | str = None
+    observations: list[str] = []
+    final_report: str = ""
+
+    # 澄清控制
+    enable_clarification: bool = False
+    clarification_rounds: int = 0
+    max_clarification_rounds: int = 3
+    is_clarification_complete: bool = False
+
+    # 资源管理
+    resources: list[Resource] = []
+    enable_background_investigation: bool = True
+    background_investigation_results: str = None
+
+    # 工作流路由
+    goto: str = "coordinator"  # 默认下一节点
+```
+
+#### 1.2 状态转换规则
+```python
+def preserve_state_meta_fields(state: State) -> dict:
+    """保留关键状态字段，防止状态回退"""
+    return {
+        "locale": state.get("locale", "en-US"),
+        "research_topic": state.get("research_topic", ""),
+        "clarified_research_topic": state.get("clarified_research_topic", ""),
+        "enable_clarification": state.get("enable_clarification", False),
+        "clarification_rounds": state.get("clarification_rounds", 0),
+        "resources": state.get("resources", []),
+    }
+```
+
+### 2. 节点设计规范
+
+#### 2.1 Coordinator 节点
+```python
+async def coordinator_node(state: State, config) -> Command:
+    """协调器节点：用户交互 + 澄清处理"""
+
+    # 分支1: 澄清禁用模式
+    if not state.get("enable_clarification"):
+        # 直接调用 handoff_to_planner
+        return Command(update=..., goto="planner")
+
+    # 分支2: 澄清启用模式
+    clarification_rounds = state.get("clarification_rounds", 0)
+    max_rounds = state.get("max_clarification_rounds", 3)
+
+    if clarification_rounds >= max_rounds:
+        # 强制转交到 planner
+        return Command(update=..., goto="planner")
+    else:
+        # 继续澄清流程
+        return Command(
+            update={
+                "messages": [...],
+                "__interrupt__": [("coordinator", question)],
+            },
+            goto="coordinator"  # 等待用户响应
+        )
+```
+
+#### 2.2 Planner 节点
+```python
+def planner_node(state: State, config) -> Command:
+    """规划器节点：生成研究计划"""
+
+    # 1. 构建规划上下文
+    context = build_planning_context(state)
+
+    # 2. 生成计划
+    plan = await generate_research_plan(context)
+
+    # 3. 验证和修复计划
+    plan = validate_and_fix_plan(plan, enforce_web_search=True)
+
+    # 4. 决策下一步
+    if plan.get("has_enough_context"):
+        return Command(update=..., goto="reporter")
+    else:
+        return Command(update=..., goto="human_feedback")
+```
+
+#### 2.3 Researcher 节点
+```python
+async def researcher_node(state: State, config) -> Command:
+    """研究员节点：执行研究任务"""
+
+    # 1. 获取当前计划
+    current_plan = state.get("current_plan")
+    if not current_plan or not current_plan.steps:
+        return Command(update=..., goto="planner")
+
+    # 2. 找到未执行的步骤
+    current_step = find_next_step(current_plan)
+
+    # 3. 执行步骤
+    result = await execute_research_step(current_step, state)
+
+    # 4. 更新状态
+    return Command(
+        update={
+            "observations": state.get("observations", []) + [result],
+            **preserve_state_meta_fields(state),
+        },
+        goto="research_team"
+    )
+```
+
+### 3. 条件路由设计
+
+#### 3.1 研究团队路由
+```python
+def continue_to_running_research_team(state: State):
+    """决定是否继续运行研究团队"""
+    current_plan = state.get("current_plan")
+    if not current_plan or not current_plan.steps:
+        return "planner"
+
+    # 检查是否所有步骤都已完成
+    if all(step.execution_res for step in current_plan.steps):
+        return "planner"
+
+    # 找到第一个未完成的步骤
+    for step in current_plan.steps:
+        if not step.execution_res:
+            if step.step_type == "research":
+                return "researcher"
+            elif step.step_type == "processing":
+                return "coder"
+
+    return "planner"
+```
+
+#### 3.2 工作流构建
+```python
+def _build_base_graph():
+    """构建基础状态图"""
+    builder = StateGraph(State)
+
+    # 添加节点
+    builder.add_edge("START", "coordinator")
+    builder.add_node("coordinator", coordinator_node)
+    builder.add_node("background_investigator", background_investigation_node)
+    builder.add_node("planner", planner_node)
+    builder.add_node("research_team", research_team_node)
+    builder.add_node("researcher", researcher_node)
+    builder.add_node("coder", coder_node)
+    builder.add_node("reporter", reporter_node)
+    builder.add_node("human_feedback", human_feedback_node)
+
+    # 定义边
+    builder.add_edge("background_investigator", "planner")
+    builder.add_conditional_edges(
+        "research_team",
+        continue_to_running_research_team,
+        ["planner", "researcher", "coder"],
+    )
+    builder.add_edge("reporter", "END")
+
+    return builder
+```
+
+## 🔧 MCP 协议集成规则
+
+### 1. MCP 客户端设计
+
+#### 1.1 传输协议抽象
+```python
+class MCPTransport(ABC):
+    """MCP 传输协议基类"""
+
+    @abstractmethod
+    async def connect(self) -> None:
+        """建立连接"""
+        pass
+
+    @abstractmethod
+    async def disconnect(self) -> None:
+        """断开连接"""
+        pass
+
+    @abstractmethod
+    async def send_message(self, message: dict) -> dict:
+        """发送消息"""
+        pass
+
+class StdIOTransport(MCPTransport):
+    """StdIO 传输协议"""
+
+class HttpStatefulTransport(MCPTransport):
+    """有状态 HTTP 传输"""
+
+class HttpStatelessTransport(MCPTransport):
+    """无状态 HTTP 传输"""
+
+class StreamableHttpTransport(MCPTransport):
+    """可流式 HTTP 传输"""
+```
+
+#### 1.2 MCP 客户端实现
+```python
+class MCPClient:
+    """AgentScope v1.0 MCP 客户端"""
+
+    async def connect(self) -> None:
+        """连接到 MCP 服务器"""
+        # 1. 根据配置选择传输协议
+        # 2. 建立连接
+        # 3. 初始化 MCP 会话
+        # 4. 发现可用工具和资源
+
+    async def call_tool(self, tool_name: str, arguments: dict) -> dict:
+        """调用工具"""
+        # JSON-RPC 2.0 格式调用
+
+    async def read_resource(self, resource_uri: str) -> dict:
+        """读取资源"""
+        # MCP 资源读取协议
+```
+
+### 2. 工具集成规则
+
+#### 2.1 工具包装器
+```python
+class MCPTool(ToolBase):
+    """MCP 工具包装器"""
+
+    def __init__(self, tool_info, server_name, client):
+        super().__init__(tool_info["name"])
+        self.tool_info = tool_info
+        self.server_name = server_name
+        self.client = client
+
+    def __call__(self, **kwargs):
+        """同步调用"""
+        return asyncio.run(self.acall(**kwargs))
+
+    async def acall(self, **kwargs):
+        """异步调用"""
+        return await self.client.call_tool(self.name, kwargs)
+```
+
+#### 2.2 多服务器管理
+```python
+class MultiServerMCPClient:
+    """多服务器 MCP 客户端管理器"""
+
+    async def connect_all(self) -> None:
+        """连接所有配置的 MCP 服务器"""
+
+    async def get_tools(self) -> List[ToolBase]:
+        """获取所有服务器的工具"""
+
+    async def __aenter__(self):
+        await self.connect_all()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.disconnect_all()
+```
+
+## 📊 数据模型设计规则
+
+### 1. 对话会话模型
+
+#### 1.1 增强字段设计
+```python
+class ConversationSession(Base, table=True):
+    """增强的对话会话模型"""
+
+    # 基础字段
+    user_id: str
+    title: str
+    last_message: Optional[str] = None
+
+    # AgentScope 增强字段
+    message_count: int = 0
+    conversation_mode: ConversationMode = ConversationMode.CHAT
+    rag_status: RAGStatus = RAGStatus.DISABLED
+
+    # 澄清相关
+    enable_clarification: bool = False
+    clarification_rounds: int = 0
+    max_clarification_rounds: int = 3
+
+    # 长期记忆
+    enable_long_term_memory: bool = False
+    memory_summary: Optional[str] = None
+
+    # 性能指标
+    total_tokens: int = 0
+    total_cost: float = 0.0
+    average_response_time: float = 0.0
+```
+
+#### 1.2 消息模型扩展
+```python
+class ConversationMessage(Base, table=True):
+    """增强的对话消息模型"""
+
+    # 基础字段
+    session_id: str
+    role: MessageRole
+    content: str
+    message_type: str = "text"
+
+    # 性能指标
+    token_count: Optional[int] = None
+    cost: Optional[float] = None
+    response_time: Optional[float] = None
+
+    # 工具调用
+    tool_calls: Optional[List[dict]] = None
+    tool_results: Optional[List[dict]] = None
+
+    # 澄清相关
+    is_clarification_question: bool = False
+    clarification_round: Optional[int] = None
+
+    # 推理相关
+    reasoning_steps: Optional[List[dict]] = None
+    confidence_score: Optional[float] = None
+
+    # 记忆相关
+    memory_importance: Optional[float] = None
+    memory_tags: Optional[List[str]] = None
+```
+
+### 2. 索引优化策略
+
+#### 2.1 查询模式分析
+```sql
+-- 用户会话查询 (高频)
+CREATE INDEX ix_conversation_sessions_user_id ON conversation_sessions(user_id);
+CREATE INDEX ix_conversation_sessions_created_at ON conversation_sessions(created_at);
+
+-- 消息查询 (高频)
+CREATE INDEX ix_conversation_messages_session_id ON conversation_messages(session_id);
+CREATE INDEX ix_conversation_messages_created_at ON conversation_messages(created_at);
+
+-- 模式过滤 (中频)
+CREATE INDEX ix_conversation_sessions_mode ON conversation_sessions(conversation_mode);
+CREATE INDEX ix_conversation_sessions_rag_status ON conversation_sessions(rag_status);
+
+-- 澄清查询 (低频但重要)
+CREATE INDEX ix_conversation_sessions_enable_clarification ON conversation_sessions(enable_clarification);
+CREATE INDEX ix_conversation_messages_is_clarification_question ON conversation_messages(is_clarification_question);
+```
+
+## 🔄 API 设计规则
+
+### 1. 流式响应设计
+
+#### 1.1 Server-Sent Events 协议
+```python
+@app.post("/api/chat/stream")
+async def chat_stream(request: ChatRequest):
+    """流式聊天研究接口"""
+
+    async def generate_events():
+        # 初始化工作流
+        graph = build_graph_with_memory()
+        config = {"configurable": {"thread_id": request.thread_id}}
+
+        # 流式执行
+        async for event in graph.astream(
+            {"messages": request.messages, **initial_state},
+            config=config
+        ):
+            # 转换事件格式
+            if event["event"] == "on_chat_model_stream":
+                yield f"event: message_chunk\ndata: {json.dumps(event['data'])}\n\n"
+            elif event["event"] == "on_tool_start":
+                yield f"event: tool_calls\ndata: {json.dumps(event['data'])}\n\n"
+            elif event["event"] == "on_tool_end":
+                yield f"event: tool_call_result\ndata: {json.dumps(event['data'])}\n\n"
+
+    return StreamingResponse(
+        generate_events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache"}
+    )
+```
+
+#### 1.2 事件类型定义
+```typescript
+interface StreamEvent {
+    event: "message_chunk" | "tool_calls" | "tool_call_result" | "interrupt" | "error";
+    data: any;
+    thread_id: string;
+    agent?: string;
+    role?: "assistant" | "user" | "system";
+    content?: string;
+}
+```
+
+### 2. 澄清流程 API
+
+#### 2.1 澄清请求格式
+```json
+{
+    "messages": [
+        {"role": "user", "content": "研究AI的发展"}
+    ],
+    "thread_id": "conversation_123",
+    "enable_clarification": true,
+    "max_clarification_rounds": 3,
+    "resources": []
+}
+```
+
+#### 2.2 澄清响应处理
+```javascript
+const eventSource = new EventSource('/api/chat/stream', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(request)
+});
+
+eventSource.addEventListener('interrupt', (event) => {
+    const data = JSON.parse(event.data);
+    if (data.agent === 'coordinator') {
+        // 显示澄清问题给用户
+        showClarificationDialog(data.content);
+    }
+});
+```
+
+## 🛡️ 安全和性能规则
+
+### 1. 资源限制
+
+#### 1.1 并发控制
+```python
+# 工作流级别并发限制
+MAX_CONCURRENT_WORKFLOWS = 10
+
+# 用户级别并发限制
+MAX_CONCURRENT_PER_USER = 3
+
+# 工具调用并发限制
+MAX_PARALLEL_TOOLS = 5
+```
+
+#### 1.2 Token 限制
+```python
+# 模型级别限制
+MODEL_TOKEN_LIMITS = {
+    "gpt-4": 128000,
+    "deepseek-v3": 128000,
+    "qwen-max": 32000
+}
+
+# 会话级别限制
+SESSION_TOKEN_LIMIT = 100000
+
+# 消息级别限制
+MESSAGE_TOKEN_LIMIT = 10000
+```
+
+### 2. 错误处理策略
+
+#### 2.1 工作流错误恢复
+```python
+async def execute_with_recovery(func, *args, max_retries=3, **kwargs):
+    """带恢复的工作流执行"""
+    for attempt in range(max_retries):
+        try:
+            return await func(*args, **kwargs)
+        except Exception as e:
+            if attempt == max_retries - 1:
+                # 记录错误并创建恢复点
+                await create_error_snapshot(state, str(e))
+                raise
+
+            # 等待后重试
+            await asyncio.sleep(2 ** attempt)
+```
+
+#### 2.2 状态一致性保证
+```python
+async def update_state_with_transaction(state_update: dict):
+    """事务性状态更新"""
+    async with get_db_session() as session:
+        # 1. 创建状态快照
+        await create_conversation_snapshot(session, state_update)
+
+        # 2. 更新状态
+        # 3. 记录操作日志
+
+        # 4. 提交事务
+        await session.commit()
+```
+
+## 📈 监控和可观测性
+
+### 1. 指标收集
+
+#### 1.1 性能指标
+- 响应时间分布
+- Token 使用量统计
+- 工具调用成功率
+- 工作流完成率
+- 澄清轮次分布
+
+#### 1.2 业务指标
+- 用户活跃度
+- 研究主题分布
+- 澄清使用率
+- RAG 增强比例
+
+### 2. 日志规范
+
+#### 2.1 结构化日志
+```python
+logger.info("workflow_started", extra={
+    "user_id": user_id,
+    "session_id": session_id,
+    "workflow_type": "research",
+    "clarification_enabled": enable_clarification
+})
+
+logger.info("tool_called", extra={
+    "tool_name": tool_name,
+    "execution_time": execution_time,
+    "success": success,
+    "error": error_message if not success else None
+})
+```
+
+#### 2.2 错误追踪
+```python
+async def handle_workflow_error(error: Exception, state: State):
+    """统一错误处理"""
+    # 1. 记录详细错误信息
+    logger.error("workflow_error", exc_info=True, extra={
+        "error_type": type(error).__name__,
+        "error_message": str(error),
+        "state_snapshot": state.to_dict()
+    })
+
+    # 2. 创建错误快照
+    await create_error_snapshot(state, str(error))
+
+    # 3. 发送告警通知
+    await send_error_alert(error, state)
+```
+
+## 🚀 部署和运维规则
+
+### 1. 容器化部署
+
+#### 1.1 Docker 配置
+```dockerfile
+FROM python:3.11-slim
+
+# 安装系统依赖
+RUN apt-get update && apt-get install -y \
+    postgresql-client \
+    redis-tools \
+    && rm -rf /var/lib/apt/lists/*
+
+# 安装 Python 依赖
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 复制应用代码
+COPY . .
+
+# 运行应用
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+#### 1.2 环境变量管理
+```bash
+# 数据库配置
+DEEP_RESEARCH_DATABASE_URL=postgresql+asyncpg://user:pass@db:5432/deep_research
+
+# Redis 配置
+DEEP_RESEARCH_REDIS_URL=redis://redis:6379/0
+
+# LLM 配置
+DEEP_RESEARCH_OPENAI_API_KEY=sk-...
+DEEP_RESEARCH_DEEPSEEK_API_KEY=sk-...
+
+# AgentScope 配置
+ENABLE_MCP_SERVER_CONFIGURATION=true
+LANGGRAPH_CHECKPOINT_SAVER=true
+```
+
+### 2. 扩展性设计
+
+#### 2.1 插件架构
+```python
+class PluginInterface(ABC):
+    """插件接口"""
+
+    @abstractmethod
+    async def initialize(self, config: dict) -> None:
+        """初始化插件"""
+        pass
+
+    @abstractmethod
+    async def process(self, data: dict) -> dict:
+        """处理数据"""
+        pass
+
+class ToolPlugin(PluginInterface):
+    """工具插件"""
+
+class MemoryPlugin(PluginInterface):
+    """记忆插件"""
+
+class WorkflowPlugin(PluginInterface):
+    """工作流插件"""
+```
+
+#### 2.2 配置热更新
+```python
+class ConfigurationManager:
+    """配置管理器"""
+
+    def __init__(self):
+        self.config = {}
+        self.watchers = []
+
+    async def load_config(self, config_path: str):
+        """加载配置"""
+        # 支持 YAML/JSON 格式
+        # 支持环境变量覆盖
+        # 支持远程配置中心
+
+    def watch_config_changes(self):
+        """监听配置变化"""
+        # 文件系统监听
+        # 配置中心推送
+        # 信号量通知
+
+    def add_watcher(self, watcher: Callable):
+        """添加配置监听器"""
+        self.watchers.append(watcher)
+```
+
+---
+
+## 📚 实施检查清单
+
+### 核心功能验证
+- [ ] AgentScope v1.0 智能体正确初始化
+- [ ] ReAct 推理-行动循环正常工作
+- [ ] 长期记忆系统正确存储和检索
+- [ ] MCP 客户端成功连接服务器
+- [ ] LangGraph 工作流状态正确流转
+- [ ] 澄清流程按预期工作
+- [ ] 流式 API 响应正确
+
+### 性能和可靠性
+- [ ] 并发请求处理正常
+- [ ] 内存使用在合理范围内
+- [ ] 错误恢复机制有效
+- [ ] 数据库连接池正常工作
+- [ ] 缓存策略有效
+
+### 监控和维护
+- [ ] 日志记录完整
+- [ ] 指标收集准确
+- [ ] 告警机制正常
+- [ ] 备份恢复流程可用
+
+---
+
+*最后更新: 2025年1月*  
+*版本: v1.1*  
+*基于: AgentScope v1.0 + LangGraph*

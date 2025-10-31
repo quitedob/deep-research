@@ -1,13 +1,17 @@
 # -*- coding: utf-8 -*-
 """
-ReAct Agent 实现 - 参考 AgentScope 的 ReAct 模式
+ReAct Agent 实现 - 基于 AgentScope v1.0 的 ReActAgent
 """
 import json
 import logging
 from typing import Any, Dict, List, Optional
 
+from agentscope import ReActAgent as AgentScopeReActAgent
+from agentscope.message import Msg
+from agentscope.tools import ToolBase
+from agentscope.memory import MemoryBase
+
 from .base_agent import AgentBase, AgentConfig
-from ..message import Msg, ToolUseBlock, ToolResultBlock, TextBlock
 from ..llms.router import SmartModelRouter
 from ..tools.tool_registry import ToolRegistry
 from ..config.config_loader import get_settings
@@ -16,21 +20,56 @@ from .prompt_templates import get_prompt_engine
 logger = logging.getLogger(__name__)
 
 
-class ReActAgent(AgentBase):
-    """ReAct (Reasoning + Acting) Agent - 参考 AgentScope"""
-    
-    def __init__(self, config: AgentConfig):
-        super().__init__(config)
+class ReActAgent(AgentBase, AgentScopeReActAgent):
+    """ReAct (Reasoning + Acting) Agent - 基于 AgentScope v1.0"""
 
-        # 初始化 LLM 路由器
-        settings = get_settings()
-        self.llm_router = SmartModelRouter.from_conf(settings.BASE_DIR / "conf.yaml")
+    def __init__(
+        self,
+        name: str,
+        config: AgentConfig,
+        model: Optional[Any] = None,
+        memory: Optional[MemoryBase] = None,
+        tools: Optional[List[ToolBase]] = None,
+        max_iters: int = 10,
+        verbose: bool = True,
+    ):
+        # 获取 LLM 模型
+        if model is None:
+            settings = get_settings()
+            llm_router = SmartModelRouter.from_conf(settings.BASE_DIR / "conf.yaml")
+            model = llm_router.get_model(config.model_name)
 
-        # 工具注册表
-        self.tool_registry = ToolRegistry()
+        # 获取工具
+        if tools is None:
+            tool_registry = ToolRegistry()
+            tools = []
+            for tool_name in config.tools:
+                tool = tool_registry.get_tool(tool_name)
+                if tool:
+                    tools.append(tool)
 
-        # ReAct 配置
-        self.max_iterations = 10
+        # 调用 AgentScope ReActAgent 初始化
+        AgentScopeReActAgent.__init__(
+            self,
+            name=name,
+            model=model,
+            memory=memory,
+            tools=tools,
+            max_iters=max_iters,
+            verbose=verbose,
+        )
+
+        # 调用自定义 AgentBase 初始化
+        AgentBase.__init__(
+            self,
+            name=name,
+            config=config,
+            memory=memory,
+            tools=tools,
+        )
+
+        # ReAct 特定配置
+        self.max_iterations = max_iters
         self.current_iteration = 0
 
         # 初始化提示词模板引擎
@@ -42,74 +81,29 @@ class ReActAgent(AgentBase):
         # 任务分解结果
         self.task_substeps = []
 
-        logger.info(f"ReAct Agent {self.name} initialized with tools: {config.tools}")
+        logger.info(f"AgentScope v1.0 ReAct Agent {self.name} initialized with {len(tools)} tools")
     
-    async def reply(self, msg: Msg, **kwargs) -> Msg:
-        """ReAct 循环：推理 -> 行动 -> 观察 (增强版)"""
-        self.current_iteration = 0
-        self.reasoning_history = []
+    async def reply(self, msg: Msg, session: Optional["Session"] = None, **kwargs) -> Msg:
+        """AgentScope v1.0 ReAct reply 方法 - 使用增强的任务分解和思维链"""
 
         # 检查是否需要任务分解 (策略三：将复杂任务分解为简单的子任务)
-        task_content = msg.content
+        task_content = msg.content if hasattr(msg, 'content') else str(msg)
         if self._is_complex_task(task_content):
             self.task_substeps = self.decompose_complex_task(task_content)
             logger.info(f"Task decomposed into {len(self.task_substeps)} substeps")
 
-        # 构建初始上下文
-        context = await self._build_enhanced_context(msg)
+        # 使用 AgentScope ReActAgent 的 reply 方法
+        response_msg = await AgentScopeReActAgent.reply(self, msg, session=session, **kwargs)
 
-        # ReAct 循环
-        while self.current_iteration < self.max_iterations:
-            self.current_iteration += 1
-
-            # 推理阶段 (增强版 - 包含思维链)
-            reasoning_result = await self._enhanced_reasoning(context)
-
-            # 记录推理历史
-            self.reasoning_history.append({
-                "iteration": self.current_iteration,
-                "reasoning": reasoning_result.get("reasoning", ""),
-                "use_tool": reasoning_result.get("use_tool", False),
-                "tool_name": reasoning_result.get("tool_name", ""),
-                "confidence": reasoning_result.get("confidence", 0.0)
+        # 添加增强的元数据
+        if hasattr(response_msg, 'metadata') and response_msg.metadata:
+            response_msg.metadata.update({
+                "task_substeps": self.task_substeps,
+                "confidence_score": self._calculate_confidence_score(),
+                "reasoning_history": self.reasoning_history
             })
 
-            # 检查是否需要使用工具
-            if reasoning_result.get("use_tool"):
-                # 行动阶段
-                action_result = await self._acting(reasoning_result)
-
-                # 观察阶段
-                observation = await self._observing(action_result)
-
-                # 更新上下文
-                context = await self._update_enhanced_context(
-                    context, reasoning_result, action_result, observation
-                )
-
-                # 检查是否完成
-                if action_result.get("finished"):
-                    break
-            else:
-                # 直接返回推理结果
-                break
-
-        # 生成最终回复 (使用思维链总结)
-        final_response = await self._generate_final_response(reasoning_result)
-
-        return Msg(
-            name=self.name,
-            content=final_response,
-            role="assistant",
-            metadata={
-                "iterations": self.current_iteration,
-                "reasoning": reasoning_result.get("reasoning", ""),
-                "tools_used": reasoning_result.get("tools_used", []),
-                "reasoning_history": self.reasoning_history,
-                "task_substeps": self.task_substeps,
-                "confidence_score": self._calculate_confidence_score()
-            }
-        )
+        return response_msg
     
     async def _reasoning(self, context: str) -> Dict[str, Any]:
         """推理阶段"""

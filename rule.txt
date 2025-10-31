@@ -1,22 +1,456 @@
 深度研究平台和Deep Research项目开发规范 本规范旨在统一团队开发标准，提高代码质量和协作效率。所有项目成员必须严格遵守
-1 通用规范和General
-1.1 文件编码 所有代码文件必须使用 UTF8 编码
-1.2 代码语言 所有代码，函数名，变量名，数据库字段名必须使用英文 允许并鼓励使用中文编写注释，特别是复杂的业务逻辑
-1.3 配置管理 严禁在代码中硬编码任何敏感信息和如API密钥，数据库密码 后端配置应使用 env 文件和 src和core和config.py 统一管理 前端配置应使用 env.development 和 env.production 文件
-1.4 日志规范 关键业务流程，错误捕获，重要状态变更必须记录日志 日志应包含清晰的上下文信息和如用户ID，请求ID
-2 架构与目录规范和Architecture
-2.1 前后端分离 src 目录为后端 Python 和FastAPI 代码 web 目录为前端 Vue.js 代码 前后端通过 src和api 定义的 RESTful API 进行通信
-2.2 后端分层和Python 必须严格遵守分层架构 我们的服务是经过api ->service（调用core的方法） -> dao(model) src和api 和API层和控制器 负责处理 HTTP 请求，响应，路径参数，查询参数 使用 FastAPI 的 Depends 进行依赖注入和如获取数据库会话 负责验证输入数据和使用 Pydantic和SQLModel 模型 严禁在此层编写核心业务逻辑 必须调用 src和服务s 层来处理业务 src和服务s 和服务层 负责处理所有核心业务逻辑 严禁直接操作数据库和应调用 sqlmodel 或 Repository 严禁包含任何 FastAPI 或 HTTP 相关的代码和如 Request, Response 应是纯粹的业务逻辑实现 src和sqlmodel 和数据模型和仓库层 负责定义所有数据库表结构和使用 SQLModel 负责提供数据库的增删改查和CRUD 操作 src和core 和核心配置 存放项目核心配置，如数据库连接 和db.py，配置加载 和config.py，缓存 和cache.py
-2.3 前端分层和Vue.js 必须遵守组件化和状态管理规范 web和src和views 和视图层 页面级组件，负责组合 components 并处理页面逻辑 web和src和components 和组件层 可复用的 UI 组件 web和src和服务s 和服务层 负责所有与后端 API 的通信和如 api.js。组件和视图必须调用 service，严禁在组件内直接使用 axios和fetch web和src和stores 和状态管理层 使用 Pinia 统一管理全局状态
-3 后端开发规范和Backend Development Standards
-3.1 异步优先和Async First 所有数据库操作，外部 API 调用等 IO 密集型任务，必须使用 async和await 语法 数据库引擎必须使用异步引擎和如 asyncio 配合 AsyncEngine
-3.2 类型提示和Type Hinting 所有函数定义和参数和返回值必须包含 Python 3.10+ 的类型提示 变量声明时，鼓励使用类型提示
-3.3 依赖注入和Dependency Injection 必须使用 FastAPI 的依赖注入系统 和Depends 来管理数据库会话 和Session，用户认证，配置等依赖
-3.4 数据库和SQLModel 所有数据表模型必须在 src和sqlmodel 中定义，并继承自 SQLModel 严禁在 api 层或 services 层编写原生 SQL 语句和除非性能极端需要，应优先使用 ORM
-3.5 依赖管理和Dependency Management 所有新增的 Python 依赖库，必须更新到 requirements.txt 文件中
-4 前端开发规范和Frontend Vue.js
-4.1 Vue 3 规范 必须使用 script setup 语法糖进行开发 必须使用组合式 API 和Composition API，如 ref, reactive, onMounted
-4.2 状态管理 跨页面，跨组件共享的全局状态和如用户信息，Token，必须存放在 Pinia store 和web和src和stores 中 临时状态和如 localStorage, sessionStorage仅用于持久化和如Token，欢迎页标记
-4.3 路由 页面跳转必须使用 vue-router 和useRouter 路由定义应集中管理
-4.4 样式 组件的 CSS 样式必须添加 scoped 属性，防止全局样式污染
-4.5 依赖管理 所有新增的 Node.js 依赖库，必须更新到 package.json 文件中
+
+1 通用规范 (General Standards)
+1.1 文件编码 
+- 所有代码文件必须使用 UTF-8 编码
+
+1.2 代码语言
+- 所有代码、函数名、变量名、数据库字段名必须使用英文
+- 允许并鼓励使用中文编写注释，特别是复杂的业务逻辑
+- 类名使用 PascalCase (如: ResearchAgent, SmartRouter)
+- 函数名和变量名使用 snake_case (如: get_config, user_id)
+- 常量使用 UPPER_SNAKE_CASE (如: MAX_TOKENS, API_KEY)
+
+1.3 配置管理
+- 严禁在代码中硬编码任何敏感信息（如API密钥、数据库密码）
+- 后端配置使用统一配置系统：
+  * 环境变量 > .env 文件 > conf.yaml > 默认值（优先级从高到低）
+  * 所有配置通过 src/config/loader/config_loader.py 的 get_config() 或 get_settings() 获取
+  * 环境变量必须使用 DEEP_RESEARCH_ 前缀（如: DEEP_RESEARCH_DATABASE_URL）
+  * 敏感配置（API密钥、密码）必须通过环境变量设置
+- 前端配置应使用 .env.development 和 .env.production 文件
+- 配置验证：所有配置类必须使用 Pydantic BaseModel 进行类型验证
+
+1.4 日志规范
+- 关键业务流程、错误捕获、重要状态变更必须记录日志
+- 日志应包含清晰的上下文信息（如用户ID、请求ID、会话ID）
+- 使用统一的日志系统：from src.config import get_logger
+- 日志级别：DEBUG < INFO < WARNING < ERROR < CRITICAL
+- 生产环境默认使用 INFO 级别，开发环境可使用 DEBUG
+2 架构与目录规范 (Architecture & Directory Standards)
+
+2.1 前后端分离
+- src/ 目录为后端 Python (FastAPI) 代码
+- vue/ 目录为前端 Vue.js 代码
+- 前后端通过 src/api 定义的 RESTful API 进行通信
+- API 文档自动生成：访问 /docs (Swagger UI) 或 /redoc
+
+2.2 后端分层架构 (Python/FastAPI)
+必须严格遵守分层架构：API层 -> Service层 -> DAO层
+
+2.2.1 src/api/ (API层/控制器层)
+- 负责处理 HTTP 请求、响应、路径参数、查询参数
+- 使用 FastAPI 的 Depends 进行依赖注入（如获取数据库会话）
+- 负责验证输入数据（使用 Pydantic/SQLModel 模型）
+- 严禁在此层编写核心业务逻辑
+- 必须调用 src/services 层来处理业务
+- 示例：
+  ```python
+  from fastapi import APIRouter, Depends
+  from src.services.smart_conversation_service import SmartConversationService
+  
+  @router.post("/chat")
+  async def chat(request: ChatRequest, service: SmartConversationService = Depends()):
+      return await service.process_message(request)
+  ```
+
+2.2.2 src/services/ (服务层)
+- 负责处理所有核心业务逻辑
+- 严禁直接操作数据库（应调用 src/dao 或使用 SQLModel）
+- 严禁包含任何 FastAPI 或 HTTP 相关的代码（如 Request, Response）
+- 应是纯粹的业务逻辑实现
+- 可以调用其他服务、LLM提供商、外部API
+- 示例：
+  ```python
+  class SmartConversationService:
+      async def process_message(self, request: ChatRequest) -> ChatResponse:
+          # 纯业务逻辑，不涉及HTTP细节
+          pass
+  ```
+
+2.2.3 src/dao/ (数据访问层)
+- 负责定义所有数据库表结构（使用 SQLModel）
+- 负责提供数据库的增删改查（CRUD）操作
+- 封装所有数据库访问逻辑
+
+2.2.4 src/core/ (核心模块)
+- 存放项目核心配置和基础设施
+- database/connection/db.py: 数据库连接管理
+- database/cache/cache.py: 缓存管理
+- 不包含业务逻辑
+
+2.2.5 src/config/ (配置模块)
+- loader/config_loader.py: 统一配置加载器
+- logging/logging.py: 日志配置
+- 所有配置通过 get_config() 或 get_settings() 获取
+
+2.2.6 其他重要目录
+- src/agents/: 智能体实现（基于 AgentScope）
+- src/llms/: LLM提供商封装和路由
+- src/graph/: LangGraph 工作流定义
+- src/middleware/: FastAPI 中间件
+- src/memory/: 对话记忆管理
+- src/rag/: RAG检索增强生成
+- src/plan/: 研究计划管理
+
+2.3 前端分层 (Vue.js)
+必须遵守组件化和状态管理规范
+
+2.3.1 vue/src/views/ (视图层)
+- 页面级组件，负责组合 components 并处理页面逻辑
+- 示例：Admin.vue, ProjectDetail.vue
+
+2.3.2 vue/src/components/ (组件层)
+- 可复用的 UI 组件
+- 示例：Sidebar.vue, QuotaDisplay.vue
+
+2.3.3 vue/src/services/ (服务层)
+- 负责所有与后端 API 的通信（如 api.js）
+- 组件和视图必须调用 service，严禁在组件内直接使用 axios/fetch
+- 示例：
+  ```javascript
+  // services/api.js
+  export const chatService = {
+    async sendMessage(message) {
+      return await axios.post('/api/chat', message)
+    }
+  }
+  ```
+
+2.3.4 vue/src/stores/ (状态管理层)
+- 使用 Pinia 统一管理全局状态
+- 跨页面、跨组件共享的状态必须存放在 store 中
+3 后端开发规范 (Backend Development Standards)
+
+3.1 异步优先 (Async First)
+- 所有数据库操作、外部 API 调用等 IO 密集型任务，必须使用 async/await 语法
+- 数据库引擎必须使用异步引擎（如 asyncio 配合 AsyncEngine）
+- 示例：
+  ```python
+  async def get_user(user_id: str) -> User:
+      async with get_db_session() as session:
+          result = await session.execute(select(User).where(User.id == user_id))
+          return result.scalar_one_or_none()
+  ```
+
+3.2 类型提示 (Type Hinting)
+- 所有函数定义的参数和返回值必须包含 Python 3.10+ 的类型提示
+- 变量声明时，鼓励使用类型提示
+- 使用 Optional, List, Dict, Any 等类型
+- 示例：
+  ```python
+  from typing import Optional, List, Dict, Any
+  
+  async def process_data(
+      data: List[Dict[str, Any]], 
+      config: Optional[Dict[str, Any]] = None
+  ) -> Dict[str, Any]:
+      pass
+  ```
+
+3.3 依赖注入 (Dependency Injection)
+- 必须使用 FastAPI 的依赖注入系统 (Depends) 来管理：
+  * 数据库会话 (Session)
+  * 用户认证
+  * 配置对象
+  * 服务实例
+- 示例：
+  ```python
+  from fastapi import Depends
+  from src.database.connection.db import get_db_session
+  
+  async def get_data(session = Depends(get_db_session)):
+      pass
+  ```
+
+3.4 数据库 (SQLModel/ORM)
+- 所有数据表模型必须在 src/dao 中定义，并继承自 SQLModel
+- 严禁在 api 层或 services 层编写原生 SQL 语句（除非性能极端需要）
+- 应优先使用 ORM 进行数据库操作
+- 示例：
+  ```python
+  from sqlmodel import SQLModel, Field
+  
+  class User(SQLModel, table=True):
+      id: Optional[int] = Field(default=None, primary_key=True)
+      username: str = Field(index=True)
+      email: str = Field(unique=True)
+  ```
+
+3.5 智能体开发 (Agent Development)
+- 基于 AgentScope 框架开发智能体
+- 所有智能体必须继承自 AgentBase 或其子类
+- 智能体配置使用 AgentConfig
+- 支持异步执行：使用 async/await
+- 示例：
+  ```python
+  from agentscope.agent import AgentBase
+  from agentscope.message import Msg
+  
+  class MyAgent(AgentBase):
+      async def reply(self, msg: Msg) -> Msg:
+          # 智能体逻辑
+          pass
+  ```
+
+3.6 LLM集成 (LLM Integration)
+- 使用统一的 LLM 路由系统：src/llms/router/smart_router.py
+- 支持多个 LLM 提供商：OpenAI, DeepSeek, Doubao, Kimi, ZhipuAI, Ollama
+- 配置通过 conf.yaml 或环境变量管理
+- 示例：
+  ```python
+  from src.llms.router.smart_router import SmartModelRouter
+  
+  router = SmartModelRouter.from_conf(Path("conf.yaml"))
+  response = await router.route_and_chat(
+      task_type="research",
+      messages=[{"role": "user", "content": "研究主题"}]
+  )
+  ```
+
+3.7 工作流开发 (Workflow Development)
+- 使用 LangGraph 构建复杂的研究工作流
+- 工作流定义在 src/graph/ 目录
+- 支持状态管理、条件路由、循环
+- 示例：
+  ```python
+  from langgraph.graph import StateGraph
+  from src.graph.state import GraphState
+  
+  workflow = StateGraph(GraphState)
+  workflow.add_node("researcher", researcher_node)
+  workflow.add_node("writer", writer_node)
+  workflow.add_edge("researcher", "writer")
+  ```
+
+3.8 错误处理 (Error Handling)
+- 使用统一的错误处理机制
+- 自定义异常应继承自 Exception
+- 记录详细的错误日志
+- 示例：
+  ```python
+  from src.config import get_logger
+  
+  logger = get_logger(__name__)
+  
+  try:
+      result = await process_data()
+  except Exception as e:
+      logger.error(f"处理数据失败: {e}", exc_info=True)
+      raise
+  ```
+
+3.9 依赖管理 (Dependency Management)
+- 所有新增的 Python 依赖库，必须更新到 requirements.txt 文件中
+- 使用虚拟环境管理依赖
+- 主要依赖：
+  * FastAPI: Web框架
+  * SQLModel: ORM
+  * Pydantic: 数据验证
+  * AgentScope: 智能体框架
+  * LangGraph: 工作流编排
+  * Redis: 缓存和任务队列
+4 前端开发规范 (Frontend Vue.js Standards)
+
+4.1 Vue 3 规范
+- 必须使用 <script setup> 语法糖进行开发
+- 必须使用组合式 API (Composition API)，如 ref, reactive, onMounted, computed
+- 示例：
+  ```vue
+  <script setup>
+  import { ref, onMounted } from 'vue'
+  
+  const count = ref(0)
+  const increment = () => count.value++
+  
+  onMounted(() => {
+    console.log('组件已挂载')
+  })
+  </script>
+  ```
+
+4.2 状态管理
+- 跨页面、跨组件共享的全局状态（如用户信息、Token）必须存放在 Pinia store (vue/src/stores)
+- 临时状态（如 localStorage, sessionStorage）仅用于持久化（如Token、欢迎页标记）
+- 示例：
+  ```javascript
+  // stores/user.js
+  import { defineStore } from 'pinia'
+  
+  export const useUserStore = defineStore('user', {
+    state: () => ({
+      user: null,
+      token: null
+    }),
+    actions: {
+      setUser(user) {
+        this.user = user
+      }
+    }
+  })
+  ```
+
+4.3 路由
+- 页面跳转必须使用 vue-router 的 useRouter
+- 路由定义应集中管理在 router/index.js
+- 示例：
+  ```javascript
+  import { useRouter } from 'vue-router'
+  
+  const router = useRouter()
+  router.push('/admin')
+  ```
+
+4.4 样式
+- 组件的 CSS 样式必须添加 scoped 属性，防止全局样式污染
+- 示例：
+  ```vue
+  <style scoped>
+  .container {
+    padding: 20px;
+  }
+  </style>
+  ```
+
+4.5 API调用
+- 所有API调用必须通过 services 层
+- 使用统一的错误处理
+- 示例：
+  ```javascript
+  // services/api.js
+  import axios from 'axios'
+  
+  export const api = {
+    async chat(message) {
+      try {
+        const response = await axios.post('/api/chat', message)
+        return response.data
+      } catch (error) {
+        console.error('API调用失败:', error)
+        throw error
+      }
+    }
+  }
+  ```
+
+4.6 依赖管理
+- 所有新增的 Node.js 依赖库，必须更新到 package.json 文件中
+- 主要依赖：
+  * Vue 3: 前端框架
+  * Pinia: 状态管理
+  * Vue Router: 路由管理
+  * Axios: HTTP客户端
+  * Element Plus: UI组件库
+
+5 测试规范 (Testing Standards)
+
+5.1 后端测试
+- 单元测试：测试独立的函数和类
+- 集成测试：测试API端点和服务交互
+- 使用 pytest 作为测试框架
+- 测试文件命名：test_*.py
+- 测试覆盖率目标：>80%
+
+5.2 前端测试
+- 组件测试：使用 Vitest 或 Jest
+- E2E测试：使用 Cypress 或 Playwright
+- 测试文件命名：*.spec.js 或 *.test.js
+
+6 文档规范 (Documentation Standards)
+
+6.1 代码注释
+- 所有公共函数必须包含 docstring
+- 复杂逻辑必须添加行内注释
+- 使用中文编写注释（便于团队理解）
+- 示例：
+  ```python
+  async def process_research(query: str, max_steps: int = 5) -> Dict[str, Any]:
+      """
+      处理研究请求
+      
+      Args:
+          query: 研究查询
+          max_steps: 最大步骤数
+          
+      Returns:
+          研究结果字典
+      """
+      pass
+  ```
+
+6.2 API文档
+- 所有API端点必须包含完整的文档
+- 使用 FastAPI 自动生成的 Swagger UI
+- 访问 /docs 查看API文档
+
+6.3 README
+- 每个主要模块应包含 README.md
+- 说明模块功能、使用方法、配置选项
+
+7 版本控制规范 (Version Control Standards)
+
+7.1 Git提交
+- 提交信息使用中文或英文，清晰描述变更
+- 格式：[类型] 简短描述
+- 类型：feat(新功能), fix(修复), docs(文档), refactor(重构), test(测试)
+- 示例：
+  * [feat] 添加智能对话编排服务
+  * [fix] 修复配额计算错误
+  * [docs] 更新API文档
+
+7.2 分支管理
+- main: 主分支，稳定版本
+- develop: 开发分支
+- feature/*: 功能分支
+- hotfix/*: 紧急修复分支
+
+8 安全规范 (Security Standards)
+
+8.1 敏感信息
+- 严禁提交敏感信息到代码仓库
+- 使用 .gitignore 排除 .env 文件
+- API密钥必须通过环境变量设置
+
+8.2 输入验证
+- 所有用户输入必须验证
+- 使用 Pydantic 进行数据验证
+- 防止 SQL 注入、XSS 攻击
+
+8.3 认证授权
+- 使用 JWT 进行用户认证
+- 实现基于角色的访问控制 (RBAC)
+- 密码必须加密存储
+
+9 性能优化规范 (Performance Standards)
+
+9.1 数据库优化
+- 使用索引优化查询
+- 避免 N+1 查询问题
+- 使用连接池管理数据库连接
+
+9.2 缓存策略
+- 使用 Redis 缓存频繁访问的数据
+- 设置合理的缓存过期时间
+- 缓存键命名规范：模块:功能:标识
+
+9.3 异步处理
+- 长时间运行的任务使用异步处理
+- 使用任务队列（Redis Queue）
+- 提供任务状态查询接口
+
+10 部署规范 (Deployment Standards)
+
+10.1 环境配置
+- 开发环境：本地开发
+- 测试环境：功能测试
+- 生产环境：正式部署
+
+10.2 容器化
+- 使用 Docker 容器化部署
+- 提供 docker-compose.yml 配置
+- 环境变量通过 .env 文件管理
+
+10.3 监控日志
+- 配置应用监控
+- 集中管理日志
+- 设置告警机制
