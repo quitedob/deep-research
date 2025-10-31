@@ -40,16 +40,15 @@ from src.api.search_full import router as search_full_router
 from src.api.share import router as share_router
 from src.api.user import router as user_router
 
-# 暂时禁用的路由（由于模块不存在）
-# from src.api.agents import router as agents_router
-# from src.api.llm_provider import router as llm_provider_router
-# from src.api.search import router as search_router
-# from src.api.ocr import router as ocr_router
-# from src.api.file_upload import router as file_upload_router
-
 # 内容审核和智能体配置路由
 from src.api.moderation import router as moderation_router
 from src.api.agent_llm_config import router as agent_llm_config_router
+
+# 对话监控路由
+from src.api.conversation_monitor import router as conversation_monitor_router
+
+# 记忆管理路由
+from src.api.memory import router as memory_router
 from src.middleware.monitoring import request_monitoring_middleware
 from src.middleware.security import security_middleware_func
 from src.config.loader.config_loader import get_settings
@@ -189,6 +188,12 @@ def create_app() -> FastAPI:
     # 内容审核和智能体配置路由
     app.include_router(moderation_router, prefix="/api")   # 内容审核
     app.include_router(agent_llm_config_router, prefix="/api") # 智能体配置
+
+    # 对话监控路由
+    app.include_router(conversation_monitor_router, prefix="/api") # 对话监控
+
+    # 记忆管理路由
+    app.include_router(memory_router, prefix="/api")       # 记忆管理
 
     # 暂时禁用的路由（由于模块不存在）
     # app.include_router(agents_router, prefix="/api")

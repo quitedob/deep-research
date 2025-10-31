@@ -293,6 +293,16 @@ class AppSettings(BaseSettings):
     memory_max_tokens: int = Field(default=4000, description="记忆最大token数")
     memory_ttl_hours: int = Field(default=24, description="记忆生存时间（小时）")
 
+    # 智能对话编排配置
+    smart_conversation_message_threshold: int = Field(default=20, description="触发RAG增强的消息数阈值")
+    smart_conversation_memory_threshold: int = Field(default=50, description="触发记忆摘要的消息数阈值")
+    smart_conversation_enable_auto_rag: bool = Field(default=True, description="启用自动RAG增强")
+    smart_conversation_enable_auto_search: bool = Field(default=True, description="启用自动联网搜索")
+    smart_conversation_rag_top_k: int = Field(default=5, description="RAG检索返回结果数")
+    smart_conversation_rag_score_threshold: float = Field(default=0.3, description="RAG检索分数阈值")
+    smart_conversation_search_limit: int = Field(default=10, description="联网搜索结果数限制")
+    smart_conversation_enable_reranking: bool = Field(default=True, description="启用重排序")
+
     # OCR配置
     ocr_provider: str = Field(default="doubao", description="OCR提供商")
     ocr_model: str = Field(default="doubao-seed-1-6-flash-250615", description="OCR模型")
