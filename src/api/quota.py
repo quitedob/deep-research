@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .deps import require_auth
 from ..sqlmodel.models import User, ApiUsageLog
 from ..core.db import get_async_session
+from ..services.quota_service import QuotaService
 from ..config.config_loader import get_settings
 
 logger = logging.getLogger(__name__)
@@ -43,13 +44,21 @@ async def get_quota_status(
     session: AsyncSession = Depends(get_async_session)
 ):
     """
-    获取当前用户的配额状态
-    
+    获取当前用户的配额状态 - 通过QuotaService处理业务逻辑
+
     返回用户的配额使用情况，包括已用、剩余和百分比
     """
     try:
+        quota_service = QuotaService(session)
+
+        # 通过服务层获取配额状态
+        quota_status = await quota_service.get_quota_status(
+            user_id=str(current_user.id),
+            role=current_user.role
+        )
+
+        # 根据用户角色构建响应
         if current_user.role == "admin":
-            # 管理员无限制
             return QuotaStatusResponse(
                 user_role="admin",
                 quota_type="unlimited",
@@ -59,29 +68,25 @@ async def get_quota_status(
                 percentage_used=0.0,
                 is_exceeded=False
             )
-        
+
         elif current_user.role == "free":
-            # 免费用户：终身次数限制
-            result = await session.execute(
-                select(func.count(ApiUsageLog.id))
-                .where(ApiUsageLog.user_id == current_user.id)
-            )
-            used = result.scalar_one() or 0
-            limit = settings.free_tier_lifetime_limit
-            remaining = max(0, limit - used)
+            stats = quota_status.get("usage_stats", {})
+            used = stats.get("today_calls", 0)
+            limit = quota_status.get("daily_limit", 50)
+            remaining = quota_status.get("remaining", 0)
             percentage_used = (used / limit * 100) if limit > 0 else 0
-            is_exceeded = used >= limit
-            
+            is_exceeded = remaining <= 0
+
             # 生成警告消息
             warning_message = None
             if is_exceeded:
                 warning_message = "您的免费配额已用完，请升级到订阅版本以继续使用"
             elif percentage_used >= 80:
                 warning_message = f"您已使用 {percentage_used:.0f}% 的免费配额，即将用完"
-            
+
             return QuotaStatusResponse(
                 user_role="free",
-                quota_type="lifetime",
+                quota_type="daily",
                 limit=limit,
                 used=used,
                 remaining=remaining,
@@ -89,34 +94,25 @@ async def get_quota_status(
                 is_exceeded=is_exceeded,
                 warning_message=warning_message
             )
-        
+
         elif current_user.role == "subscribed":
-            # 订阅用户：每小时次数限制
-            # 注意：这里简化处理，实际应该查询最近一小时的使用量
-            from datetime import datetime, timedelta
-            
-            one_hour_ago = datetime.now() - timedelta(hours=1)
-            result = await session.execute(
-                select(func.count(ApiUsageLog.id))
-                .where(ApiUsageLog.user_id == current_user.id)
-                .where(ApiUsageLog.timestamp >= one_hour_ago)
-            )
-            used = result.scalar_one() or 0
-            limit = settings.subscribed_tier_hourly_limit
-            remaining = max(0, limit - used)
+            stats = quota_status.get("usage_stats", {})
+            used = stats.get("this_month_calls", 0)
+            limit = quota_status.get("monthly_limit", 10000)
+            remaining = quota_status.get("remaining", 0)
             percentage_used = (used / limit * 100) if limit > 0 else 0
-            is_exceeded = used >= limit
-            
+            is_exceeded = remaining <= 0
+
             # 生成警告消息
             warning_message = None
             if is_exceeded:
-                warning_message = "您本小时的配额已用完，请稍后再试"
+                warning_message = "您本月的配额已用完，请等待下月重置或升级套餐"
             elif percentage_used >= 80:
-                warning_message = f"您已使用 {percentage_used:.0f}% 的小时配额"
-            
+                warning_message = f"您已使用 {percentage_used:.0f}% 的月度配额"
+
             return QuotaStatusResponse(
                 user_role="subscribed",
-                quota_type="hourly",
+                quota_type="monthly",
                 limit=limit,
                 used=used,
                 remaining=remaining,
@@ -124,10 +120,10 @@ async def get_quota_status(
                 is_exceeded=is_exceeded,
                 warning_message=warning_message
             )
-        
+
         else:
             raise HTTPException(status_code=400, detail="无效的用户角色")
-    
+
     except HTTPException:
         raise
     except Exception as e:
@@ -142,31 +138,41 @@ async def get_usage_history(
     session: AsyncSession = Depends(get_async_session)
 ):
     """
-    获取用户的使用历史
-    
+    获取用户的使用历史 - 通过QuotaService处理业务逻辑
+
     返回最近的 API 调用记录
     """
     try:
-        result = await session.execute(
-            select(ApiUsageLog)
-            .where(ApiUsageLog.user_id == current_user.id)
-            .order_by(ApiUsageLog.timestamp.desc())
-            .limit(limit)
+        quota_service = QuotaService(session)
+
+        # 通过服务层获取使用历史
+        history = await quota_service.get_usage_history(
+            user_id=str(current_user.id),
+            days=30  # 默认获取30天的历史
         )
-        logs = result.scalars().all()
-        
+
+        # 如果有错误，返回错误信息
+        if history.get("error"):
+            logger.error(f"获取使用历史失败: {history.get('error')}")
+            return {
+                "total": 0,
+                "history": [],
+                "error": history.get("error")
+            }
+
+        # 简化的历史记录（详细记录需要DAO支持）
         return {
-            "total": len(logs),
+            "total": history.get("total_usage", 0),
             "history": [
                 {
-                    "endpoint": log.endpoint_called,
-                    "timestamp": log.timestamp.isoformat(),
-                    "extra": log.extra
+                    "period_days": history.get("period_days", 30),
+                    "total_usage": history.get("total_usage", 0),
+                    "daily_average": history.get("daily_average", 0),
+                    "message": history.get("message", "Detailed history not yet implemented")
                 }
-                for log in logs
             ]
         }
-    
+
     except Exception as e:
         logger.error(f"获取使用历史失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))

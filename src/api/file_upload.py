@@ -17,6 +17,7 @@ from .deps import require_auth
 from ..sqlmodel.models import User
 from ..core.db import get_async_session
 from ..services.ocr_service import get_ocr_service
+from ..services.document_service import DocumentService
 from ..config.config_loader import get_settings
 
 logger = logging.getLogger(__name__)
@@ -107,74 +108,56 @@ async def upload_file(
     session: AsyncSession = Depends(get_async_session)
 ):
     """
-    上传文件
-    
+    上传文件 - 通过DocumentService处理业务逻辑
+
     支持的格式：PDF, PPT, PPTX, DOC, DOCX, TXT, MD
     """
     try:
+        document_service = DocumentService(session)
+
         logger.info(f"用户 {current_user.id} 上传文件: {file.filename}")
-        
-        # 检查文件类型
-        file_ext = Path(file.filename).suffix.lower()
-        allowed_types = settings.allowed_file_types.split(',')
-        
-        if file_ext not in allowed_types:
-            raise HTTPException(
-                status_code=400,
-                detail=f"不支持的文件类型: {file_ext}。支持的类型: {', '.join(allowed_types)}"
-            )
-        
+
         # 读取文件内容
         content = await file.read()
-        file_size = len(content)
-        
-        # 检查文件大小
-        if file_size > settings.max_file_size:
-            raise HTTPException(
-                status_code=400,
-                detail=f"文件过大。最大允许: {settings.max_file_size / 1024 / 1024:.1f}MB"
-            )
-        
-        # 保存文件
-        file_path = get_upload_path(str(current_user.id), file.filename)
-        with open(file_path, 'wb') as f:
-            f.write(content)
-        
-        # 生成文件ID
-        file_id = str(uuid.uuid4())
-        
-        # 创建数据库记录
-        from ..sqlmodel.models import DocumentProcessingJob
-        
-        job = DocumentProcessingJob(
-            id=file_id,
-            user_id=current_user.id,
+
+        # 通过服务层上传文档
+        result = await document_service.upload_document(
+            user_id=str(current_user.id),
             filename=file.filename,
-            file_path=str(file_path),
-            status="pending"
+            file_content=content
         )
-        
-        session.add(job)
-        await session.commit()
-        
+
+        if not result.get("success"):
+            error_type = result.get("error_type", "upload_failed")
+            if error_type == "validation_failed":
+                raise HTTPException(
+                    status_code=400,
+                    detail=result.get("error", "文件验证失败")
+                )
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail=result.get("error", "文件上传失败")
+                )
+
         # 添加后台处理任务
         background_tasks.add_task(
             process_file_background,
-            str(file_path),
-            file_id,
+            result.get("file_path"),  # 使用服务层返回的文件路径
+            str(result.get("job_id")),
             str(current_user.id)
         )
-        
+
         return FileUploadResponse(
-            file_id=file_id,
+            file_id=str(result.get("job_id")),
             filename=file.filename,
-            file_path=str(file_path),
-            file_size=file_size,
-            file_type=file_ext,
-            status="processing",
+            file_path=result.get("file_path", ""),
+            file_size=result.get("file_size", len(content)),
+            file_type=Path(file.filename).suffix.lower(),
+            status=result.get("status", "pending"),
             message="文件上传成功，正在处理中"
         )
-    
+
     except HTTPException:
         raise
     except Exception as e:
@@ -188,30 +171,26 @@ async def get_file_status(
     current_user: User = Depends(require_auth),
     session: AsyncSession = Depends(get_async_session)
 ):
-    """获取文件处理状态"""
+    """获取文件处理状态 - 通过DocumentService处理业务逻辑"""
     try:
-        from ..sqlmodel.models import DocumentProcessingJob
-        from sqlalchemy import select
-        
-        # 查询文件记录
-        result = await session.execute(
-            select(DocumentProcessingJob).where(
-                DocumentProcessingJob.id == file_id,
-                DocumentProcessingJob.user_id == current_user.id
-            )
+        document_service = DocumentService(session)
+
+        # 通过服务层获取文档状态
+        job_info = await document_service.get_document_status(
+            user_id=str(current_user.id),
+            job_id=int(file_id)
         )
-        job = result.scalar_one_or_none()
-        
-        if not job:
+
+        if not job_info:
             raise HTTPException(status_code=404, detail="文件不存在")
-        
+
         return FileProcessResponse(
             file_id=file_id,
-            status=job.status,
-            extracted_text=job.extracted_text if hasattr(job, 'extracted_text') else None,
-            error=job.error_message
+            status=job_info.get("status"),
+            extracted_text=job_info.get("result", {}).get("extracted_text") if job_info.get("result") else None,
+            error=job_info.get("error_message")
         )
-    
+
     except HTTPException:
         raise
     except Exception as e:
@@ -226,33 +205,35 @@ async def list_user_files(
     current_user: User = Depends(require_auth),
     session: AsyncSession = Depends(get_async_session)
 ):
-    """获取用户的文件列表"""
+    """获取用户的文件列表 - 通过DocumentService处理业务逻辑"""
     try:
-        from ..sqlmodel.models import DocumentProcessingJob
-        from sqlalchemy import select
-        
-        # 查询用户的文件
-        query = select(DocumentProcessingJob).where(
-            DocumentProcessingJob.user_id == current_user.id
-        ).order_by(DocumentProcessingJob.created_at.desc()).offset(skip).limit(limit)
-        
-        result = await session.execute(query)
-        jobs = result.scalars().all()
-        
+        document_service = DocumentService(session)
+
+        # 通过服务层获取用户文档列表
+        result = await document_service.get_user_documents(
+            user_id=str(current_user.id),
+            skip=skip,
+            limit=limit
+        )
+
+        documents = result.get("documents", [])
+
         return {
-            "total": len(jobs),
+            "total": result.get("total", len(documents)),
             "files": [
                 {
-                    "file_id": str(job.id),
-                    "filename": job.filename,
-                    "status": job.status,
-                    "created_at": job.created_at.isoformat(),
-                    "updated_at": job.updated_at.isoformat() if job.updated_at else None
+                    "file_id": str(doc.get("job_id")),
+                    "filename": doc.get("filename"),
+                    "status": doc.get("status"),
+                    "created_at": doc.get("created_at").isoformat() if doc.get("created_at") else None,
+                    "updated_at": doc.get("created_at").isoformat() if doc.get("created_at") else None,  # 简化处理
+                    "progress": doc.get("progress"),
+                    "error_message": doc.get("error_message")
                 }
-                for job in jobs
+                for doc in documents
             ]
         }
-    
+
     except Exception as e:
         logger.error(f"获取文件列表失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -264,39 +245,30 @@ async def delete_file(
     current_user: User = Depends(require_auth),
     session: AsyncSession = Depends(get_async_session)
 ):
-    """删除文件"""
+    """删除文件 - 通过DocumentService处理业务逻辑"""
     try:
-        from ..sqlmodel.models import DocumentProcessingJob
-        from sqlalchemy import select
-        
-        # 查询文件记录
-        result = await session.execute(
-            select(DocumentProcessingJob).where(
-                DocumentProcessingJob.id == file_id,
-                DocumentProcessingJob.user_id == current_user.id
-            )
+        document_service = DocumentService(session)
+
+        # 通过服务层删除文档
+        result = await document_service.delete_document(
+            user_id=str(current_user.id),
+            job_id=int(file_id)
         )
-        job = result.scalar_one_or_none()
-        
-        if not job:
-            raise HTTPException(status_code=404, detail="文件不存在")
-        
-        # 删除物理文件
-        if job.file_path and os.path.exists(job.file_path):
-            os.remove(job.file_path)
-        
-        # 删除数据库记录
-        await session.delete(job)
-        await session.commit()
-        
+
+        if not result.get("success"):
+            error_message = result.get("error", "删除文件失败")
+            if "不存在或无权限访问" in error_message:
+                raise HTTPException(status_code=404, detail="文件不存在")
+            else:
+                raise HTTPException(status_code=500, detail=error_message)
+
         return {
             "success": True,
-            "message": "文件已删除"
+            "message": result.get("message", "文件已删除")
         }
-    
+
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"删除文件失败: {e}")
-        await session.rollback()
         raise HTTPException(status_code=500, detail=str(e))

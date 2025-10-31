@@ -20,7 +20,8 @@ from sqlalchemy.orm import selectinload
 
 from src.core.db import get_db_session
 from src.sqlmodel.models import User, Subscription
-from src.services.auth import get_current_user
+from src.services.auth_service import get_current_user
+from src.services.billing_service import BillingService
 from src.config.loader.config_loader import get_settings
 from src.api.errors import create_error_response, ErrorCodes, handle_database_error, handle_not_found_error
 
@@ -53,7 +54,7 @@ async def create_checkout_session(
     db: AsyncSession = Depends(get_db_session)
 ):
     """
-    创建 Stripe Checkout 会话，用于用户订阅
+    创建 Stripe Checkout 会话，用于用户订阅 - 通过BillingService处理业务逻辑
     """
     if not STRIPE_AVAILABLE:
         return create_error_response(
@@ -63,6 +64,19 @@ async def create_checkout_session(
         )
 
     try:
+        billing_service = BillingService(db)
+
+        # 检查用户是否已有活跃订阅
+        existing_subscription = await billing_service.get_user_subscription(
+            user_id=str(current_user.id)
+        )
+        if existing_subscription:
+            return create_error_response(
+                code=ErrorCodes.BUSINESS_LOGIC_ERROR,
+                message="用户已有活跃订阅",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
         # 从配置获取 Stripe 价格 ID 和前后端 URL
         price_id = settings.stripe_price_id
         success_url = f"{settings.frontend_url}/subscribe/success"
@@ -70,7 +84,7 @@ async def create_checkout_session(
 
         # 检查用户是否已有 Stripe 客户 ID
         stripe_customer_id = current_user.stripe_customer_id
-        
+
         if not stripe_customer_id:
             # 如果用户在 Stripe 中不存在，则创建一个
             customer = stripe.Customer.create(
@@ -79,8 +93,8 @@ async def create_checkout_session(
                 metadata={'user_id': str(current_user.id)}
             )
             stripe_customer_id = customer.id
-            
-            # 更新用户的 Stripe 客户 ID
+
+            # 更新用户的 Stripe 客户 ID（这里需要通过DAO更新）
             await db.execute(
                 update(User)
                 .where(User.id == current_user.id)
@@ -99,9 +113,9 @@ async def create_checkout_session(
             allow_promotion_codes=True,
             billing_address_collection='required',
         )
-        
+
         return CheckoutSessionResp(url=checkout_session.url)
-        
+
     except stripe.error.StripeError as e:
         return create_error_response(
             code=ErrorCodes.BUSINESS_LOGIC_ERROR,
@@ -209,135 +223,125 @@ async def stripe_webhook(
 
 
 async def _handle_checkout_completed(event: dict, db: AsyncSession):
-    """处理结账完成事件"""
+    """处理结账完成事件 - 通过BillingService处理业务逻辑"""
     session = event['data']['object']
     user_id = session['metadata']['user_id']
     stripe_subscription_id = session['subscription']
-    
-    # 获取订阅详情
-    subscription = stripe.Subscription.retrieve(stripe_subscription_id)
-    
-    # 在数据库中创建或更新订阅记录
-    existing_subscription = await db.execute(
-        select(Subscription)
-        .where(Subscription.stripe_subscription_id == stripe_subscription_id)
-    )
-    existing_subscription = existing_subscription.scalar_one_or_none()
-    
-    if existing_subscription:
-        # 更新现有订阅
-        await db.execute(
-            update(Subscription)
-            .where(Subscription.id == existing_subscription.id)
-            .values(
-                status=subscription.status,
-                current_period_end=subscription.current_period_end,
-                updated_at=subscription.current_period_end
-            )
-        )
-    else:
-        # 创建新订阅
-        new_subscription = Subscription(
+
+    try:
+        billing_service = BillingService(db)
+
+        # 获取订阅详情
+        subscription = stripe.Subscription.retrieve(stripe_subscription_id)
+
+        # 通过服务层创建或更新订阅
+        result = await billing_service.create_subscription(
             user_id=user_id,
             stripe_subscription_id=stripe_subscription_id,
+            plan_name="Deep Research Pro",
             status=subscription.status,
-            current_period_end=subscription.current_period_end,
-            plan_name="Deep Research Pro"
+            current_period_start=subscription.current_period_start,
+            current_period_end=subscription.current_period_end
         )
-        db.add(new_subscription)
-    
-    # 更新用户角色为 subscribed
-    await db.execute(
-        update(User)
-        .where(User.id == user_id)
-        .values(role='subscribed')
-    )
-    
-    await db.commit()
+
+        if result.get("success"):
+            logger.info(f"订阅创建成功: {result.get('subscription_id')}")
+        else:
+            logger.error(f"订阅创建失败: {result.get('error')}")
+
+    except Exception as e:
+        logger.error(f"处理结账完成事件失败: {e}")
+        # 记录错误但不抛出异常，避免 Stripe 重试
 
 
 async def _handle_subscription_updated(event: dict, db: AsyncSession):
-    """处理订阅更新事件"""
+    """处理订阅更新事件 - 通过BillingService处理业务逻辑"""
     subscription = event['data']['object']
-    
-    # 更新本地数据库中的订阅状态
-    await db.execute(
-        update(Subscription)
-        .where(Subscription.stripe_subscription_id == subscription.id)
-        .values(
+
+    try:
+        billing_service = BillingService(db)
+
+        # 通过服务层更新订阅
+        result = await billing_service.update_subscription_from_stripe(
+            stripe_subscription_id=subscription.id,
             status=subscription.status,
-            current_period_end=subscription.current_period_end,
-            updated_at=subscription.current_period_end
+            current_period_start=subscription.current_period_start,
+            current_period_end=subscription.current_period_end
         )
-    )
-    
-    # 如果订阅被取消，将用户角色改回 free
-    if subscription.status in ['canceled', 'past_due']:
-        await db.execute(
-            update(User)
-            .where(User.stripe_customer_id == subscription.customer)
-            .values(role='free')
-        )
-    
-    await db.commit()
+
+        if result.get("success"):
+            logger.info(f"订阅更新成功: {result.get('subscription_id')}")
+        else:
+            logger.error(f"订阅更新失败: {result.get('error')}")
+
+    except Exception as e:
+        logger.error(f"处理订阅更新事件失败: {e}")
 
 
 async def _handle_subscription_deleted(event: dict, db: AsyncSession):
-    """处理订阅删除事件"""
+    """处理订阅删除事件 - 通过BillingService处理业务逻辑"""
     subscription = event['data']['object']
-    
-    # 将用户角色改回 free
-    await db.execute(
-        update(User)
-        .where(User.stripe_customer_id == subscription.customer)
-        .values(role='free')
-    )
-    
-    # 更新订阅状态为 canceled
-    await db.execute(
-        update(Subscription)
-        .where(Subscription.stripe_subscription_id == subscription.id)
-        .values(
-            status='canceled',
-            updated_at=subscription.canceled_at
+
+    try:
+        billing_service = BillingService(db)
+
+        # 通过服务层取消订阅
+        result = await billing_service.update_subscription_from_stripe(
+            stripe_subscription_id=subscription.id,
+            status='canceled'
         )
-    )
-    
-    await db.commit()
+
+        if result.get("success"):
+            logger.info(f"订阅删除成功: {result.get('subscription_id')}")
+        else:
+            logger.error(f"订阅删除失败: {result.get('error')}")
+
+    except Exception as e:
+        logger.error(f"处理订阅删除事件失败: {e}")
 
 
 async def _handle_payment_failed(event: dict, db: AsyncSession):
-    """处理支付失败事件"""
+    """处理支付失败事件 - 通过BillingService处理业务逻辑"""
     invoice = event['data']['object']
-    
-    # 更新订阅状态为 past_due
-    await db.execute(
-        update(Subscription)
-        .where(Subscription.stripe_subscription_id == invoice.subscription)
-        .values(
-            status='past_due',
-            updated_at=invoice.created
+
+    try:
+        billing_service = BillingService(db)
+
+        # 通过服务层更新订阅状态
+        result = await billing_service.update_subscription_from_stripe(
+            stripe_subscription_id=invoice.subscription,
+            status='past_due'
         )
-    )
-    
-    await db.commit()
+
+        if result.get("success"):
+            logger.info(f"支付失败事件处理成功: {result.get('subscription_id')}")
+        else:
+            logger.error(f"支付失败事件处理失败: {result.get('error')}")
+
+    except Exception as e:
+        logger.error(f"处理支付失败事件失败: {e}")
 
 
 async def _handle_payment_succeeded(event: dict, db: AsyncSession):
-    """处理支付成功事件"""
+    """处理支付成功事件 - 通过BillingService处理业务逻辑"""
     invoice = event['data']['object']
-    
-    # 更新订阅状态为 active
-    await db.execute(
-        update(Subscription)
-        .where(Subscription.stripe_subscription_id == invoice.subscription)
-        .values(
-            status='active',
-            updated_at=invoice.created
+
+    try:
+        billing_service = BillingService(db)
+
+        # 通过服务层更新订阅状态
+        result = await billing_service.update_subscription_from_stripe(
+            stripe_subscription_id=invoice.subscription,
+            status='active'
         )
-    )
-    
-    await db.commit()
+
+        if result.get("success"):
+            logger.info(f"支付成功事件处理成功: {result.get('subscription_id')}")
+        else:
+            logger.error(f"支付成功事件处理失败: {result.get('error')}")
+
+    except Exception as e:
+        logger.error(f"处理支付成功事件失败: {e}")
 
 
 @router.get("/subscription-status")
@@ -346,25 +350,23 @@ async def get_subscription_status(
     db: AsyncSession = Depends(get_db_session)
 ):
     """
-    获取当前用户的订阅状态
+    获取当前用户的订阅状态 - 通过BillingService处理业务逻辑
     """
     try:
-        # 查询用户的活跃订阅
-        subscription = await db.execute(
-            select(Subscription)
-            .where(Subscription.user_id == current_user.id)
-            .where(Subscription.status == 'active')
-            .order_by(Subscription.created_at.desc())
+        billing_service = BillingService(db)
+
+        # 通过服务层获取用户订阅信息
+        subscription = await billing_service.get_user_subscription(
+            user_id=str(current_user.id)
         )
-        subscription = subscription.scalar_one_or_none()
-        
+
         if subscription:
             return {
                 "has_active_subscription": True,
-                "subscription_id": str(subscription.id),
-                "status": subscription.status,
-                "current_period_end": subscription.current_period_end,
-                "plan_name": subscription.plan_name
+                "subscription_id": subscription.get("subscription_id"),
+                "status": subscription.get("status"),
+                "current_period_end": subscription.get("current_period_end"),
+                "plan_name": subscription.get("plan_name")
             }
         else:
             return {
@@ -374,6 +376,6 @@ async def get_subscription_status(
                 "current_period_end": None,
                 "plan_name": None
             }
-            
+
     except Exception as e:
         return handle_database_error(e, "获取订阅状态")

@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from src.api.deps import require_auth
 from src.sqlmodel.models import User
 from src.config.loader.config_loader import get_settings
+from src.services.user_preferences_service import UserPreferencesService
 from src.llms.router import ModelRouter
 
 logger = logging.getLogger(__name__)
@@ -45,89 +46,61 @@ async def handle_user_onboarding(
     current_user: User = Depends(require_auth)
 ):
     """
-    处理用户引导流程
+    处理用户引导流程 - 通过UserPreferencesService处理业务逻辑
 
     记录用户的引导状态，提供个性化的引导体验
     """
     try:
-        # 简单的内存存储（实际应用中应使用数据库）
-        if not hasattr(handle_user_onboarding, '_user_onboarding'):
-            handle_user_onboarding._user_onboarding = {}
+        from sqlalchemy.ext.asyncio import AsyncSession
+        from src.core.db import get_async_session
 
-        user_id = str(current_user.id)
+        async for session in get_async_session():
+            preferences_service = UserPreferencesService(session)
 
-        if user_id not in handle_user_onboarding._user_onboarding:
-            handle_user_onboarding._user_onboarding[user_id] = {
-                "started": False,
-                "completed": False,
-                "current_step": None,
-                "steps_completed": [],
-                "started_at": None,
-                "completed_at": None
-            }
+            if request.action == "start":
+                result = await preferences_service.start_onboarding(
+                    user_id=str(current_user.id),
+                    step=request.step
+                )
+                if result.get("success"):
+                    return UserOnboardingResponse(
+                        success=True,
+                        message=result.get("message"),
+                        next_step=result.get("next_step"),
+                        progress=result.get("progress")
+                    )
+                else:
+                    raise HTTPException(status_code=500, detail=result.get("message"))
 
-        onboarding = handle_user_onboarding._user_onboarding[user_id]
+            elif request.action == "complete":
+                result = await preferences_service.complete_onboarding(
+                    user_id=str(current_user.id),
+                    step=request.step
+                )
+                if result.get("success"):
+                    return UserOnboardingResponse(
+                        success=True,
+                        message=result.get("message"),
+                        progress=result.get("progress")
+                    )
+                else:
+                    raise HTTPException(status_code=500, detail=result.get("message"))
 
-        if request.action == "start":
-            onboarding["started"] = True
-            onboarding["started_at"] = datetime.utcnow().isoformat()
-            onboarding["current_step"] = request.step or "welcome"
+            elif request.action == "skip":
+                result = await preferences_service.skip_onboarding(
+                    user_id=str(current_user.id)
+                )
+                if result.get("success"):
+                    return UserOnboardingResponse(
+                        success=True,
+                        message=result.get("message"),
+                        progress=result.get("progress")
+                    )
+                else:
+                    raise HTTPException(status_code=500, detail=result.get("message"))
 
-            logger.info(f"用户 {current_user.id} 开始引导流程")
-
-            return UserOnboardingResponse(
-                success=True,
-                message="引导流程已开始",
-                next_step="welcome",
-                progress={
-                    "started": True,
-                    "completed": False,
-                    "current_step": "welcome",
-                    "steps_completed": []
-                }
-            )
-
-        elif request.action == "complete":
-            onboarding["completed"] = True
-            onboarding["completed_at"] = datetime.utcnow().isoformat()
-            onboarding["current_step"] = None
-
-            if request.step and request.step not in onboarding["steps_completed"]:
-                onboarding["steps_completed"].append(request.step)
-
-            logger.info(f"用户 {current_user.id} 完成引导流程")
-
-            return UserOnboardingResponse(
-                success=True,
-                message="引导流程已完成",
-                progress={
-                    "started": True,
-                    "completed": True,
-                    "current_step": None,
-                    "steps_completed": onboarding["steps_completed"]
-                }
-            )
-
-        elif request.action == "skip":
-            onboarding["completed"] = True  # 跳过也算完成
-            onboarding["completed_at"] = datetime.utcnow().isoformat()
-            onboarding["current_step"] = None
-
-            logger.info(f"用户 {current_user.id} 跳过引导流程")
-
-            return UserOnboardingResponse(
-                success=True,
-                message="已跳过引导流程",
-                progress={
-                    "started": onboarding["started"],
-                    "completed": True,
-                    "current_step": None,
-                    "steps_completed": onboarding["steps_completed"]
-                }
-            )
-
-        else:
-            raise HTTPException(status_code=400, detail="无效的引导动作")
+            else:
+                raise HTTPException(status_code=400, detail="无效的引导动作")
 
     except HTTPException:
         raise
@@ -140,37 +113,20 @@ async def get_onboarding_status(
     current_user: User = Depends(require_auth)
 ):
     """
-    获取用户引导状态
+    获取用户引导状态 - 通过UserPreferencesService处理业务逻辑
     """
     try:
-        user_id = str(current_user.id)
+        from sqlalchemy.ext.asyncio import AsyncSession
+        from src.core.db import get_async_session
 
-        if not hasattr(handle_user_onboarding, '_user_onboarding') or user_id not in handle_user_onboarding._user_onboarding:
-            return {
-                "started": False,
-                "completed": False,
-                "current_step": None,
-                "steps_completed": [],
-                "is_first_visit": True
-            }
-
-        onboarding = handle_user_onboarding._user_onboarding[user_id]
-
-        return {
-            **onboarding,
-            "is_first_visit": not onboarding["started"]
-        }
+        async for session in get_async_session():
+            preferences_service = UserPreferencesService(session)
+            status = await preferences_service.get_onboarding_status(str(current_user.id))
+            return status
 
     except Exception as e:
         logger.error(f"获取引导状态失败: {e}")
-        return {
-            "started": False,
-            "completed": False,
-            "current_step": None,
-            "steps_completed": [],
-            "is_first_visit": True,
-            "error": str(e)
-        }
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/user/preferences")
 async def update_user_preferences(
@@ -178,32 +134,32 @@ async def update_user_preferences(
     current_user: User = Depends(require_auth)
 ):
     """
-    更新用户偏好设置
+    更新用户偏好设置 - 通过UserPreferencesService处理业务逻辑
 
     包括主题、语言、通知设置等
     """
     try:
-        # 简单的内存存储（实际应用中应使用数据库）
-        if not hasattr(update_user_preferences, '_user_preferences'):
-            update_user_preferences._user_preferences = {}
+        from sqlalchemy.ext.asyncio import AsyncSession
+        from src.core.db import get_async_session
 
-        user_id = str(current_user.id)
+        async for session in get_async_session():
+            preferences_service = UserPreferencesService(session)
+            result = await preferences_service.update_user_preferences(
+                user_id=str(current_user.id),
+                preferences=request.preferences
+            )
 
-        if user_id not in update_user_preferences._user_preferences:
-            update_user_preferences._user_preferences[user_id] = {}
+            if result.get("success"):
+                return {
+                    "success": True,
+                    "message": result.get("message"),
+                    "preferences": result.get("preferences")
+                }
+            else:
+                raise HTTPException(status_code=500, detail=result.get("message"))
 
-        # 更新偏好设置
-        preferences = request.preferences
-        update_user_preferences._user_preferences[user_id].update(preferences)
-
-        logger.info(f"用户 {current_user.id} 更新偏好设置: {list(preferences.keys())}")
-
-        return {
-            "success": True,
-            "message": "偏好设置已更新",
-            "preferences": update_user_preferences._user_preferences[user_id]
-        }
-
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"更新用户偏好失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -213,30 +169,16 @@ async def get_user_preferences(
     current_user: User = Depends(require_auth)
 ):
     """
-    获取用户偏好设置
+    获取用户偏好设置 - 通过UserPreferencesService处理业务逻辑
     """
     try:
-        user_id = str(current_user.id)
+        from sqlalchemy.ext.asyncio import AsyncSession
+        from src.core.db import get_async_session
 
-        if not hasattr(update_user_preferences, '_user_preferences') or user_id not in update_user_preferences._user_preferences:
-            # 返回默认偏好设置
-            default_preferences = {
-                "theme": "light",
-                "language": "zh-CN",
-                "notifications": {
-                    "email": True,
-                    "push": False,
-                    "sound": True
-                },
-                "ui": {
-                    "compact_mode": False,
-                    "show_tips": True,
-                    "auto_save": True
-                }
-            }
-            return default_preferences
-
-        return update_user_preferences._user_preferences[user_id]
+        async for session in get_async_session():
+            preferences_service = UserPreferencesService(session)
+            preferences = await preferences_service.get_user_preferences(str(current_user.id))
+            return preferences
 
     except Exception as e:
         logger.error(f"获取用户偏好失败: {e}")
@@ -245,41 +187,18 @@ async def get_user_preferences(
 @router.get("/system/info")
 async def get_system_info():
     """
-    获取系统信息
+    获取系统信息 - 通过UserPreferencesService处理业务逻辑
 
     用于欢迎页面展示平台能力
     """
     try:
-        # 获取LLM提供商信息
-        providers_info = await _router.health()
+        from sqlalchemy.ext.asyncio import AsyncSession
+        from src.core.db import get_async_session
 
-        return {
-            "platform": {
-                "name": "Deep Research Platform",
-                "version": _settings.app_version,
-                "description": "AI驱动的深度研究平台"
-            },
-            "capabilities": {
-                "llm_providers": list(providers_info.get("providers", {}).keys()),
-                "features": [
-                    "智能对话",
-                    "深度研究",
-                    "代码执行",
-                    "文档分析",
-                    "多模态处理",
-                    "数据可视化"
-                ],
-                "supported_languages": ["zh-CN", "en-US"],
-                "max_file_size": "50MB",
-                "supported_formats": [".txt", ".pdf", ".docx", ".md", ".json", ".csv"]
-            },
-            "statistics": {
-                "active_users": "10K+",
-                "processed_documents": "50K+",
-                "ai_conversations": "1M+",
-                "uptime": "99.9%"
-            }
-        }
+        async for session in get_async_session():
+            preferences_service = UserPreferencesService(session)
+            system_info = await preferences_service.get_system_info()
+            return system_info
 
     except Exception as e:
         logger.error(f"获取系统信息失败: {e}")

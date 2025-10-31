@@ -14,8 +14,8 @@ from sqlalchemy import select, func
 
 from src.core.db import get_db_session
 from src.sqlmodel.models import User
-from src.services.auth import get_current_user
-from src.dao.conversation import ConversationDAO
+from src.services.auth_service import get_current_user
+from src.services.conversation_service import ConversationService
 from src.config.loader.config_loader import get_settings
 from src.api.errors import create_error_response, ErrorCodes, handle_database_error, handle_not_found_error
 
@@ -72,35 +72,36 @@ async def list_conversation_sessions(
     page_size: int = 20
 ):
     """
-    获取用户的对话会话列表
+    获取用户的对话会话列表 - 通过ConversationService处理业务逻辑
     """
     try:
-        # 使用DAO查询真实数据
-        convo_dao = ConversationDAO(db)
-        sessions = await convo_dao.get_sessions_by_user(
-            user_id=current_user.id,
-            page=page,
-            page_size=page_size
+        conversation_service = ConversationService(db)
+
+        # 计算偏移量
+        skip = (page - 1) * page_size
+
+        # 通过服务层获取对话会话
+        result = await conversation_service.get_user_conversations(
+            user_id=str(current_user.id),
+            skip=skip,
+            limit=page_size
         )
 
-        # 计算消息数量并构建响应
+        # 构建响应数据
         result_sessions = []
-        for session in sessions:
-            message_count = len(session.messages) if hasattr(session, 'messages') else 0
-            last_message = session.last_message if hasattr(session, 'last_message') else ""
-
+        for conv in result.get("conversations", []):
             result_sessions.append(ConversationSession(
-                id=session.id,
-                title=session.title,
-                user_id=session.user_id,
-                created_at=session.created_at,
-                updated_at=session.updated_at,
-                message_count=message_count,
-                last_message=last_message
+                id=conv["session_id"],
+                title=conv["title"],
+                user_id=str(current_user.id),
+                created_at=conv["created_at"],
+                updated_at=conv["updated_at"],
+                message_count=conv.get("message_count", 0),
+                last_message=""  # 可以在服务层扩展获取最后消息
             ))
 
         return result_sessions
-        
+
     except Exception as e:
         return handle_database_error(e, "获取对话会话列表")
 
@@ -112,28 +113,43 @@ async def create_conversation_session(
     db: AsyncSession = Depends(get_db_session)
 ):
     """
-    创建新的对话会话
+    创建新的对话会话 - 通过ConversationService处理业务逻辑
     """
     try:
-        # 使用DAO创建真实对话会话
-        convo_dao = ConversationDAO(db)
-        session = await convo_dao.create_session(
-            user_id=current_user.id,
-            title=request.title,
-            initial_message=request.initial_message
+        conversation_service = ConversationService(db)
+
+        # 通过服务层创建对话会话
+        result = await conversation_service.create_conversation(
+            user_id=str(current_user.id),
+            title=request.title
         )
+
+        if not result.get("success"):
+            return handle_database_error(
+                Exception(result.get("error", "创建对话会话失败")),
+                "创建对话会话"
+            )
+
+        # 如果有初始消息，添加到会话中
+        if request.initial_message:
+            await conversation_service.add_message(
+                user_id=str(current_user.id),
+                session_id=result["session_id"],
+                role="user",
+                content=request.initial_message
+            )
 
         # 构建响应对象
         return ConversationSession(
-            id=session.id,
-            title=session.title,
-            user_id=session.user_id,
-            created_at=session.created_at,
-            updated_at=session.updated_at,
+            id=result["session_id"],
+            title=result["title"],
+            user_id=str(current_user.id),
+            created_at=result["created_at"],
+            updated_at=result["created_at"],  # 刚创建时updated_at等于created_at
             message_count=1 if request.initial_message else 0,
             last_message=request.initial_message or ""
         )
-        
+
     except Exception as e:
         return handle_database_error(e, "创建对话会话")
 
@@ -145,43 +161,47 @@ async def get_conversation_detail(
     db: AsyncSession = Depends(get_db_session)
 ):
     """
-    获取对话详情
+    获取对话详情 - 通过ConversationService处理业务逻辑
     """
     try:
-        # 使用DAO获取真实对话详情
-        convo_dao = ConversationDAO(db)
-        session = await convo_dao.get_session_by_id(session_id=session_id, user_id=current_user.id)
+        conversation_service = ConversationService(db)
 
-        if not session:
+        # 通过服务层获取对话详情
+        session_info = await conversation_service.get_conversation(
+            user_id=str(current_user.id),
+            session_id=session_id
+        )
+
+        if not session_info:
             return handle_not_found_error("对话会话", session_id)
 
-        # 获取会话中的消息
-        messages = await convo_dao.get_messages_by_session(
-            session_id=session_id,
-            user_id=current_user.id
+        # 获取对话消息
+        messages_result = await conversation_service.get_conversation_messages(
+            user_id=str(current_user.id),
+            session_id=session_id
         )
 
         # 构建消息响应
         response_messages = []
-        for msg in messages:
+        for msg in messages_result.get("messages", []):
             response_messages.append(ConversationMessage(
-                role=msg.role,
-                content=msg.content,
-                timestamp=msg.created_at
+                role=msg["role"],
+                content=msg["content"],
+                timestamp=msg["created_at"]
             ))
 
         # 构建响应对象
         conversation = ConversationDetail(
-            id=session.id,
-            title=session.title,
-            user_id=session.user_id,
-            created_at=session.created_at,
-            updated_at=session.updated_at,
+            id=session_id,
+            title=session_info["title"],
+            user_id=str(current_user.id),
+            created_at=session_info["created_at"],
+            updated_at=session_info["updated_at"],
             messages=response_messages
         )
 
         return conversation
-        
+
     except Exception as e:
         return handle_database_error(e, "获取对话详情")
 
@@ -194,27 +214,45 @@ async def add_message_to_conversation(
     db: AsyncSession = Depends(get_db_session)
 ):
     """
-    向对话会话添加消息
+    向对话会话添加消息 - 通过ConversationService处理业务逻辑
     """
     try:
-        # 使用DAO添加真实消息
-        convo_dao = ConversationDAO(db)
-        message = await convo_dao.add_message(
+        conversation_service = ConversationService(db)
+
+        # 验证消息角色
+        valid_roles = ["user", "assistant", "system"]
+        if request.role not in valid_roles:
+            raise HTTPException(
+                status_code=400,
+                detail=f"无效的消息角色。有效选项: {', '.join(valid_roles)}"
+            )
+
+        # 通过服务层添加消息
+        result = await conversation_service.add_message(
+            user_id=str(current_user.id),
             session_id=session_id,
-            user_id=current_user.id,
             role=request.role,
             content=request.content
         )
 
-        if not message:
-            return handle_not_found_error("对话会话", session_id)
+        if not result.get("success"):
+            error_msg = result.get("error", "添加消息失败")
+            if "不存在或无权限访问" in error_msg:
+                return handle_not_found_error("对话会话", session_id)
+            else:
+                return handle_database_error(
+                    Exception(error_msg),
+                    "添加消息"
+                )
 
         return {
-            "message": "消息添加成功",
+            "message": result.get("message", "消息添加成功"),
             "session_id": session_id,
-            "message_id": message.id
+            "message_id": result.get("message_id")
         }
-        
+
+    except HTTPException:
+        raise
     except Exception as e:
         return handle_database_error(e, "添加消息")
 
@@ -226,24 +264,32 @@ async def delete_conversation_session(
     db: AsyncSession = Depends(get_db_session)
 ):
     """
-    删除对话会话
+    删除对话会话 - 通过ConversationService处理业务逻辑
     """
     try:
-        # 使用DAO删除真实对话会话
-        convo_dao = ConversationDAO(db)
-        success = await convo_dao.delete_session(
-            session_id=session_id,
-            user_id=current_user.id
+        conversation_service = ConversationService(db)
+
+        # 通过服务层删除对话会话
+        result = await conversation_service.delete_conversation(
+            user_id=str(current_user.id),
+            session_id=session_id
         )
 
-        if not success:
-            return handle_not_found_error("对话会话", session_id)
+        if not result.get("success"):
+            error_msg = result.get("error", "删除对话会话失败")
+            if "不存在或无权限访问" in error_msg:
+                return handle_not_found_error("对话会话", session_id)
+            else:
+                return handle_database_error(
+                    Exception(error_msg),
+                    "删除对话会话"
+                )
 
         return {
-            "message": "对话会话删除成功",
+            "message": result.get("message", "对话会话删除成功"),
             "session_id": session_id
         }
-        
+
     except Exception as e:
         return handle_database_error(e, "删除对话会话")
 
@@ -254,54 +300,40 @@ async def get_conversation_memory_summary(
     db: AsyncSession = Depends(get_db_session)
 ):
     """
-    获取对话记忆摘要
+    获取对话记忆摘要 - 通过ConversationService处理业务逻辑
     """
     try:
-        # 使用DAO获取真实统计数据
-        convo_dao = ConversationDAO(db)
+        conversation_service = ConversationService(db)
 
-        # 获取用户的所有对话会话
-        sessions = await convo_dao.get_sessions_by_user(
-            user_id=current_user.id,
-            include_messages=False
+        # 通过服务层获取对话统计信息
+        stats = await conversation_service.get_conversation_statistics(
+            user_id=str(current_user.id),
+            days=30  # 默认统计30天
         )
-
-        total_conversations = len(sessions)
-
-        # 计算总消息数
-        total_messages = 0
-        topics = set()
-        last_active = None
-
-        for session in sessions:
-            # 统计消息数
-            messages = await convo_dao.get_messages_by_session(
-                session_id=session.id,
-                user_id=current_user.id,
-                limit=100  # 限制查询数量，避免性能问题
-            )
-            total_messages += len(messages)
-
-            # 收集话题（从会话标题中提取关键词）
-            title_words = session.title.split()
-            topics.update(title_words)
-
-            # 更新最后活动时间
-            if last_active is None or session.updated_at > last_active:
-                last_active = session.updated_at
 
         # 分析对话风格（简单的关键词统计）
         style_keywords = ["详细", "简洁", "专业", "友好", "条理", "清晰"]
         conversation_style = "专业且有条理"  # 默认风格
 
+        # 获取最近活动时间（简化实现）
+        last_active = None
+        user_conversations = await conversation_service.get_user_conversations(
+            user_id=str(current_user.id),
+            skip=0,
+            limit=1
+        )
+
+        if user_conversations.get("conversations"):
+            last_active = user_conversations["conversations"][0]["updated_at"]
+
         return {
             "user_id": str(current_user.id),
-            "total_conversations": total_conversations,
-            "total_messages": total_messages,
-            "favorite_topics": list(topics)[:5],  # 取前5个话题
+            "total_conversations": stats.get("total_sessions", 0),
+            "total_messages": stats.get("total_messages", 0),
+            "favorite_topics": [],  # 可以在服务层扩展分析话题
             "conversation_style": conversation_style,
             "last_active": last_active.isoformat() if last_active else None
         }
-        
+
     except Exception as e:
         return handle_database_error(e, "获取记忆摘要")
