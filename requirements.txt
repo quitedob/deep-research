@@ -66,6 +66,7 @@ wikipedia>=1.4.0
 aiohttp>=3.9.0
 duckduckgo-search>=5.0.0
 trafilatura>=1.7.0
+feedparser>=6.0.10  # 用于解析Atom XML格式
 
 # Configuration and Tools
 python-dotenv>=1.0.0

@@ -1,0 +1,247 @@
+# 深度研究平台（Deep Research Platform） - 技术架构分析报告
+
+## 项目概述
+
+深度研究平台是一个基于多智能体协作的AI研究系统，通过智能路由、工具调用和LangGraph工作流实现自动化深度研究。系统采用FastAPI后端 + Vue.js前端架构，支持多种LLM提供商的智能调度。
+
+## 核心架构分析
+
+### 1. 智能路由系统（Smart Router）
+
+**设计理念**：系统不依赖模型"凭空"决定调用工具，而是通过配置文件严格规定行为。
+
+#### 如何要求（How）：通过显式的指令和约束
+
+**allowed-tools 约束**：
+- 每个任务类型定义专属的提供商优先级列表
+- 根据任务复杂度、成本预算、速度要求进行多因素决策
+- 支持函数调用能力检查（DeepSeek Reasoner不支持函数调用）
+
+```yaml
+PROVIDER_PRIORITY:
+  research: ["zhipuai", "doubao", "kimi", "deepseek", "ollama"]  # 研究任务：搜索能力优先
+  reasoning: ["zhipuai", "deepseek", "ollama", "doubao", "kimi"]  # 推理任务：ZhipuAI GLM-4.6旗舰
+  code: ["deepseek", "zhipuai", "ollama", "doubao", "kimi"]      # 代码任务：DeepSeek最强
+```
+
+**精确的任务脚本（Prompt Engineering）**：
+- 创建增强路由提示词，包含思维链推理步骤
+- 6步决策流程：理解需求 → 能力匹配 → 质量评估 → 成本考量 → 性能权衡 → 最终决策
+
+**强制执行机制**：
+- 路由决策基于配置文件，无模型自主选择
+- 支持LLM辅助路由（复杂度高时启用）
+- 自动降级策略确保服务可用性
+
+#### 如何主动（When）：通过事件触发和自主链式调用
+
+**事件驱动触发**：
+- GitHub Workflows风格的配置文件驱动
+- 支持定时任务、API调用触发等事件源
+
+**代理链式调用**：
+- 多智能体系统：coordinator → background_investigator → planner → researcher → coder → reporter
+- 条件分支：根据任务状态自动选择下一节点
+- 状态管理：LangGraph StateGraph维护完整工作流状态
+
+```python
+def continue_to_running_research_team(state: State):
+    """决定是否继续运行研究团队"""
+    current_plan = state.get("current_plan")
+    if not current_plan or not current_plan.steps:
+        return "planner"
+    if all(step.execution_res for step in current_plan.steps):
+        return "planner"
+    # 自动选择：researcher 或 coder
+    return "researcher" if incomplete_step.step_type == "research" else "coder"
+```
+
+### 2. 工具调用系统（Tool System）
+
+**设计理念**：基于注册表的插件化架构，支持动态加载和能力扩展。
+
+#### 工具基类设计
+```python
+class BaseTool(ABC):
+    def __init__(self, name: str, description: str = ""):
+        self.name = name
+        self.description = description
+        self._cache = {}  # 内置缓存机制
+        self._cache_ttl = 300  # 5分钟TTL
+
+    @abstractmethod
+    def execute(self, query: str, **kwargs) -> ToolResult:
+        """执行工具（同步）"""
+        pass
+
+    async def aexecute(self, query: str, **kwargs) -> ToolResult:
+        """执行工具（异步）"""
+        pass
+```
+
+#### 工具注册表
+```python
+class ToolRegistry:
+    def register_tool(self, tool: BaseTool):
+        self._tools[tool.name] = tool
+
+    def get_tool_schemas(self) -> List[Dict]:
+        """获取工具schema（用于LLM Function Calling）"""
+        return [tool.get_schema() for tool in self._tools.values()]
+```
+
+#### 内置工具类型
+- **搜索工具**：web_search.py, wikipedia_tool.py, arxiv_tool.py
+- **代码工具**：code_exec.py, code_executor.py
+- **文档工具**：OCR服务，文件上传处理
+- **推理工具**：数学计算，逻辑推理
+
+### 3. 多智能体协作系统（Multi-Agent System）
+
+**LangGraph工作流架构**：
+- 基于状态图的确定性工作流
+- 支持条件分支和循环执行
+- 内置记忆机制（MemorySaver）
+
+**智能体角色分工**：
+1. **Coordinator**：任务协调和分发
+2. **Background Investigator**：背景信息收集
+3. **Planner**：研究计划制定
+4. **Research Team**：并行研究执行
+5. **Researcher**：专项研究
+6. **Coder**：代码生成和执行
+7. **Reporter**：结果汇总和报告生成
+8. **Human Feedback Node**：人工反馈处理
+
+**状态管理**：
+```python
+@dataclass
+class State:
+    original_query: str
+    iteration_count: int
+    error_log: List[str]
+    retrieved_documents: List[Dict]
+    analysis_results: Dict[str, Any]
+    draft_report: Optional[str]
+    next_action: str
+    human_review_required: bool
+    feedback_request: Optional[str]
+    user_feedback: Optional[str]
+```
+
+### 4. 记忆管理系统（Memory System）
+
+**层次化记忆架构**：
+1. **会话记忆**：当前对话上下文
+2. **长期记忆**：跨会话的知识积累
+3. **向量记忆**：基于嵌入的语义检索
+
+**阈值管理机制**：
+- 消息数量阈值：默认50条消息触发摘要
+- 自动摘要：后台异步生成对话摘要
+- 智能压缩：保留关键信息，压缩历史内容
+
+```python
+# 记忆阈值监控
+def check_memory_threshold(session_id: str, message_count: int):
+    threshold = get_memory_threshold(session_id)  # 默认50
+    if message_count >= threshold:
+        trigger_memory_summary(session_id)
+```
+
+### 5. 智能编排器（Smart Orchestrator）
+
+**核心功能**：
+- **意图分析**：自动识别用户意图（常规对话/联网搜索/RAG查询）
+- **动态RAG**：消息数量>20时自动构建会话知识库
+- **流式响应**：Server-Sent Events提供实时反馈
+- **上下文增强**：根据意图组合历史+增强信息
+
+**处理流程**：
+```mermaid
+graph TD
+    A[用户输入] --> B{意图分析}
+    B -->|联网需求| C[调用搜索API]
+    B -->|RAG需求| D[向量检索]
+    B -->|常规对话| E[直接LLM调用]
+
+    C --> F[结果整合]
+    D --> F
+    E --> F
+
+    F --> G[上下文增强]
+    G --> H[生成响应]
+    H --> I[持久化存储]
+    I --> J{记忆阈值检查}
+    J -->|达到阈值| K[触发摘要]
+    J -->|未达到| L[继续对话]
+```
+
+### 6. 技术栈架构
+
+**后端架构**：
+- **Web框架**：FastAPI（高性能异步API）
+- **数据库**：PostgreSQL + SQLAlchemy（关系数据）
+- **向量数据库**：PGVector（语义搜索）
+- **缓存**：Redis（会话缓存和任务队列）
+- **任务队列**：Redis Queue（异步任务处理）
+- **配置管理**：YAML配置 + 环境变量
+
+**LLM集成**：
+- **多提供商支持**：Doubao、Kimi、DeepSeek、ZhipuAI、Ollama
+- **智能路由**：基于任务类型、成本、质量的自动选择
+- **能力映射**：详细的模型能力配置表
+- **降级策略**：自动故障转移和备用方案
+
+**前端架构**：
+- **框架**：Vue.js 3 + Composition API
+- **状态管理**：Pinia
+- **UI组件**：自定义组件库
+- **通信**：RESTful API + Server-Sent Events
+
+## 核心优势分析
+
+### 1. 架构设计优势
+- **可扩展性**：插件化工具系统，易于添加新功能
+- **可靠性**：多重降级策略，确保服务连续性
+- **性能优化**：智能缓存、异步处理、并发控制
+- **安全性**：完整的认证授权、内容审核、配额管理
+
+### 2. 技术创新点
+- **智能路由**：基于多因素的LLM选择算法
+- **多智能体协作**：确定性的工作流编排
+- **记忆管理**：自动化的长期记忆机制
+- **工具集成**：统一的工具注册和调用接口
+
+### 3. 业务价值
+- **自动化研究**：从人工收集到智能生成的全流程自动化
+- **高质量输出**：多智能体协作确保研究深度和准确性
+- **成本控制**：智能路由优化资源使用
+- **用户体验**：流式响应和实时反馈
+
+## 优化建议
+
+### 1. 架构优化
+- **微服务化**：考虑将路由器、工具系统拆分为独立服务
+- **缓存策略**：增加多级缓存（内存→Redis→CDN）
+- **监控体系**：完善的可观测性栈（Metrics、Tracing、Logging）
+
+### 2. 性能优化
+- **并发处理**：增加连接池和异步任务优化
+- **资源管理**：实现更好的内存管理和垃圾回收
+- **网络优化**：压缩响应、HTTP/2支持、边缘计算
+
+### 3. 功能扩展
+- **插件生态**：建立工具插件市场
+- **定制化**：支持用户自定义智能体和工作流
+- **集成能力**：提供更多第三方系统集成接口
+
+## 总结
+
+深度研究平台展现了现代AI系统的典型架构模式：通过配置驱动、事件触发、工具调用和多智能体协作，实现复杂任务的自动化执行。系统的核心创新在于将传统的编程式工作流转换为声明式的配置管理，同时保持了高度的可扩展性和可靠性。
+
+这种设计理念为AI应用系统的开发提供了很好的参考：**不是让AI自主决策一切，而是通过精心设计的规则和流程来引导AI发挥最大效能**。
+
+---
+*报告生成时间：2025年1月16日*
+*基于项目代码分析和技术文档整理*
