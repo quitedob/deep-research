@@ -48,6 +48,21 @@ class SetProviderRequest(BaseModel):
     provider: str
 
 
+class DomainFilterRequest(BaseModel):
+    """域名过滤请求"""
+    blocked_domains: Optional[list] = None
+    allowed_domains: Optional[list] = None
+
+
+class SearchConfigRequest(BaseModel):
+    """搜索配置请求"""
+    enable_deduplication: Optional[bool] = None
+    enable_domain_filter: Optional[bool] = None
+    enable_result_ranking: Optional[bool] = None
+    max_results: Optional[int] = None
+    min_content_length: Optional[int] = None
+
+
 # ==================== API 端点 ====================
 
 @router.get("/providers", response_model=ProvidersResponse)
@@ -134,4 +149,185 @@ async def test_provider(
     
     except Exception as e:
         logger.error(f"测试提供商失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== 搜索结果后处理 API ====================
+
+@router.get("/config")
+async def get_search_config(
+    current_user: User = Depends(require_auth)
+):
+    """获取搜索配置"""
+    try:
+        service = get_unified_search_service()
+        return {
+            "success": True,
+            "config": {
+                "enable_deduplication": service.enable_deduplication,
+                "enable_domain_filter": service.enable_domain_filter,
+                "enable_result_ranking": service.enable_result_ranking,
+                "max_results": service.max_results,
+                "min_content_length": service.min_content_length
+            },
+            "domain_filters": service.get_domain_filters()
+        }
+    except Exception as e:
+        logger.error(f"获取搜索配置失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/config")
+async def update_search_config(
+    request: SearchConfigRequest,
+    current_user: User = Depends(require_auth)
+):
+    """更新搜索配置"""
+    try:
+        service = get_unified_search_service()
+        
+        if request.enable_deduplication is not None:
+            service.enable_deduplication = request.enable_deduplication
+        
+        if request.enable_domain_filter is not None:
+            service.enable_domain_filter = request.enable_domain_filter
+        
+        if request.enable_result_ranking is not None:
+            service.enable_result_ranking = request.enable_result_ranking
+        
+        if request.max_results is not None:
+            service.max_results = request.max_results
+        
+        if request.min_content_length is not None:
+            service.min_content_length = request.min_content_length
+        
+        return {
+            "success": True,
+            "message": "搜索配置已更新",
+            "config": {
+                "enable_deduplication": service.enable_deduplication,
+                "enable_domain_filter": service.enable_domain_filter,
+                "enable_result_ranking": service.enable_result_ranking,
+                "max_results": service.max_results,
+                "min_content_length": service.min_content_length
+            }
+        }
+    except Exception as e:
+        logger.error(f"更新搜索配置失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/domains")
+async def get_domain_filters(
+    current_user: User = Depends(require_auth)
+):
+    """获取域名过滤配置"""
+    try:
+        service = get_unified_search_service()
+        filters = service.get_domain_filters()
+        return {
+            "success": True,
+            "filters": filters
+        }
+    except Exception as e:
+        logger.error(f"获取域名过滤配置失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/domains")
+async def update_domain_filters(
+    request: DomainFilterRequest,
+    current_user: User = Depends(require_auth)
+):
+    """更新域名过滤配置"""
+    try:
+        service = get_unified_search_service()
+        service.set_domain_filters(
+            blocked_domains=request.blocked_domains,
+            allowed_domains=request.allowed_domains
+        )
+        
+        return {
+            "success": True,
+            "message": "域名过滤配置已更新",
+            "filters": service.get_domain_filters()
+        }
+    except Exception as e:
+        logger.error(f"更新域名过滤配置失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/domains/block")
+async def add_blocked_domain(
+    domain: str,
+    current_user: User = Depends(require_auth)
+):
+    """添加黑名单域名"""
+    try:
+        service = get_unified_search_service()
+        service.add_blocked_domain(domain)
+        return {
+            "success": True,
+            "message": f"已添加黑名单域名: {domain}",
+            "blocked_domains": list(service.blocked_domains)
+        }
+    except Exception as e:
+        logger.error(f"添加黑名单域名失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/domains/block/{domain}")
+async def remove_blocked_domain(
+    domain: str,
+    current_user: User = Depends(require_auth)
+):
+    """移除黑名单域名"""
+    try:
+        service = get_unified_search_service()
+        service.remove_blocked_domain(domain)
+        return {
+            "success": True,
+            "message": f"已移除黑名单域名: {domain}",
+            "blocked_domains": list(service.blocked_domains)
+        }
+    except Exception as e:
+        logger.error(f"移除黑名单域名失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/domains/allow")
+async def add_allowed_domain(
+    domain: str,
+    current_user: User = Depends(require_auth)
+):
+    """添加白名单域名"""
+    try:
+        service = get_unified_search_service()
+        service.add_allowed_domain(domain)
+        return {
+            "success": True,
+            "message": f"已添加白名单域名: {domain}",
+            "allowed_domains": list(service.allowed_domains)
+        }
+    except Exception as e:
+        logger.error(f"添加白名单域名失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/domains/allow/{domain}")
+async def remove_allowed_domain(
+    domain: str,
+    current_user: User = Depends(require_auth)
+):
+    """移除白名单域名"""
+    try:
+        service = get_unified_search_service()
+        service.remove_allowed_domain(domain)
+        return {
+            "success": True,
+            "message": f"已移除白名单域名: {domain}",
+            "allowed_domains": list(service.allowed_domains)
+        }
+    except Exception as e:
+        logger.error(f"移除白名单域名失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))

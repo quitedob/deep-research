@@ -195,6 +195,14 @@ def create_app() -> FastAPI:
     # 记忆管理路由
     app.include_router(memory_router, prefix="/api")       # 记忆管理
 
+    # 向量嵌入路由
+    from src.api.embedding import router as embedding_router
+    app.include_router(embedding_router, prefix="/api")    # 向量嵌入
+
+    # LangGraph工作流路由
+    from src.api.workflow import router as workflow_router
+    app.include_router(workflow_router, prefix="/api")     # 工作流
+
     # 暂时禁用的路由（由于模块不存在）
     # app.include_router(agents_router, prefix="/api")
     # app.include_router(llm_provider_router, prefix="/api")

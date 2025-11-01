@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from ..api.deps import require_auth
 from ..api.errors import create_error_response, ErrorCodes, handle_database_error, handle_not_found_error, APIException
 from ..sqlmodel.models import User
-from ..service.agent_manager import get_agent_manager_v2
+from ..services.agentscope_service import get_agentscope_service
 
 logger = logging.getLogger(__name__)
 
@@ -63,12 +63,12 @@ async def list_agents(
 ):
     """列出所有可用的Agents"""
     try:
-        manager = get_agent_manager_v2()
-        agents = manager.list_agents()
+        service = get_agentscope_service()
+        agents = await service.list_agents()
         
         return [
             AgentResponse(
-                id=agent["status"]["id"],
+                id=agent["config"]["name"],
                 name=agent["config"]["name"],
                 base_name=agent["config"]["role"],
                 description=agent["config"]["system_prompt"][:100] + "...",
@@ -88,19 +88,18 @@ async def get_agent_info(
 ):
     """获取Agent详细信息"""
     try:
-        manager = get_agent_manager_v2()
-        agent = manager.get_agent(agent_id)
+        service = get_agentscope_service()
+        agent_status = await service.get_agent_status(agent_id)
         
-        if not agent:
+        if not agent_status:
             return handle_not_found_error(f"Agent '{agent_id}'")
         
-        agent_dict = agent.to_dict()
         return AgentResponse(
-            id=agent_dict["status"]["id"],
-            name=agent_dict["config"]["name"],
-            base_name=agent_dict["config"]["role"],
-            description=agent_dict["config"]["system_prompt"][:100] + "...",
-            capabilities=agent_dict["config"]["capabilities"]
+            id=agent_status["name"],
+            name=agent_status["name"],
+            base_name=agent_status["role"],
+            description="AgentScope v1.0 智能体",
+            capabilities=agent_status["capabilities"]
         )
     except HTTPException:
         raise
@@ -116,8 +115,8 @@ async def call_agent(
 ):
     """调用指定的Agent"""
     try:
-        manager = get_agent_manager_v2()
-        result = await manager.call_agent(
+        service = get_agentscope_service()
+        result = await service.call_agent(
             agent_id=request.agent_id,
             message=request.prompt,
             session_id=request.session_id,
@@ -143,10 +142,10 @@ async def collaborate_agents(
 ):
     """多Agent协作完成任务 - 支持顺序、并行、层次化协作"""
     try:
-        manager = get_agent_manager_v2()
-        result = await manager.collaborate_agents(
-            agent_ids=request.agent_ids,
+        service = get_agentscope_service()
+        result = await service.collaborate_agents(
             task=request.task,
+            agent_ids=request.agent_ids,
             collaboration_type=request.collaboration_type,
             session_id=request.session_id
         )
@@ -158,24 +157,11 @@ async def collaborate_agents(
                 status_code=400
             )
         
-        # 格式化结果以匹配响应模型
-        collaboration_result = result.get("result", {})
-        formatted_results = []
-        
-        if collaboration_result.get("type") == "sequential":
-            formatted_results = collaboration_result.get("steps", [])
-        elif collaboration_result.get("type") == "parallel":
-            formatted_results = collaboration_result.get("results", [])
-        elif collaboration_result.get("type") == "hierarchical":
-            coordinator = collaboration_result.get("coordinator", {})
-            workers = collaboration_result.get("workers", [])
-            formatted_results = [coordinator] + workers
-        
         return CollaborationResponse(
             status="success",
             task=request.task,
-            results=formatted_results,
-            session_id=request.session_id or result.get("collaboration_id", "")
+            results=result.get("results", []),
+            session_id=result.get("session_id", request.session_id)
         )
     except HTTPException:
         raise
@@ -191,19 +177,10 @@ async def get_session_history(
 ):
     """获取会话历史"""
     try:
-        manager = get_agent_manager_v2()
-        
-        if session_id not in manager.sessions:
-            return handle_not_found_error(f"Session '{session_id}'")
-        
-        session = manager.sessions[session_id]
-        
+        # TODO: 实现会话历史查询
         return {
             "session_id": session_id,
-            "created_at": session["created_at"].isoformat(),
-            "last_activity": session.get("last_activity", session["created_at"]).isoformat(),
-            "agents_used": list(session["agents_used"]),
-            "messages": session["messages"]
+            "message": "Session history feature coming soon with AgentScope v1.0"
         }
     except HTTPException:
         raise
