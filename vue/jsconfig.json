@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "baseUrl": "./",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@src/*": ["../src/*"],
+      "@rag/*": ["../src/rag/*"]
+    }
+  },
+  "exclude": ["node_modules", "dist", "**/*.updated.vue", "**/*_updated.vue"]
+}

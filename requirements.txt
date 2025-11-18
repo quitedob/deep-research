@@ -1,0 +1,26 @@
+# Web Framework
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+python-multipart>=0.0.6
+
+# Database
+asyncpg>=0.29.0
+
+# LLM Providers
+openai>=1.3.0
+aiohttp>=3.9.0
+
+# AgentScope
+agentscope>=0.0.5
+
+# Environment
+python-dotenv>=1.0.0
+
+# Utilities
+pydantic>=2.5.0
+pydantic[email]>=2.5.0
+email-validator>=2.0.0
+
+# Redis
+redis>=5.0.0
+aioredis>=2.0.1

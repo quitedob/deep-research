@@ -1,0 +1,129 @@
+/* 图标样式定义 */
+/* 使用简单的Unicode字符或CSS绘制作为图标 */
+
+/* 通用图标类 */
+.icon-file::before { content: "📄"; }
+.icon-folder::before { content: "📁"; }
+.icon-search::before { content: "🔍"; }
+.icon-refresh::before { content: "🔄"; }
+.icon-upload::before { content: "📤"; }
+.icon-download::before { content: "📥"; }
+.icon-edit::before { content: "✏️"; }
+.icon-delete::before { content: "🗑️"; }
+.icon-check::before { content: "✓"; }
+.icon-error::before { content: "❌"; }
+.icon-warning::before { content: "⚠️"; }
+.icon-info::before { content: "ℹ️"; }
+.icon-plus::before { content: "+"; }
+.icon-minus::before { content: "-"; }
+.icon-chevron-up::before { content: "▲"; }
+.icon-chevron-down::before { content: "▼"; }
+.icon-chevron-left::before { content: "◀"; }
+.icon-chevron-right::before { content: "▶"; }
+.icon-external-link::before { content: "🔗"; }
+.icon-link::before { content: "🔗"; }
+.icon-quote::before { content: "\""; }
+.icon-eye::before { content: "👁️"; }
+.icon-heart::before { content: "❤️"; }
+.icon-star::before { content: "⭐"; }
+.icon-target::before { content: "🎯"; }
+.icon-quality::before { content: "✨"; }
+.icon-brain::before { content: "🧠"; }
+.icon-message::before { content: "💬"; }
+.icon-dashboard::before { content: "📊"; }
+.icon-monitor::before { content: "📈"; }
+.icon-activity::before { content: "⚡"; }
+.icon-zap::before { content: "⚡"; }
+.icon-circle::before { content: "●"; }
+.icon-empty::before { content: "📭"; }
+.icon-clock::before { content: "🕐"; }
+.icon-spinner::before { content: "⏳"; }
+.icon-verified::before { content: "✓"; }
+.icon-document::before { content: "📋"; }
+.icon-pdf::before { content: "📕"; }
+.icon-word::before { content: "📝"; }
+.icon-text::before { content: "📄"; }
+.icon-markdown::before { content: "📝"; }
+.icon-retry::before { content: "🔄"; }
+
+/* 图标基础样式 */
+[class*="icon-"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-style: normal;
+  font-weight: normal;
+  speak: none;
+  text-decoration: inherit;
+  width: 1em;
+  margin-right: .2em;
+  text-align: center;
+  font-variant: normal;
+  text-transform: none;
+  line-height: 1em;
+  margin-left: .2em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 旋转动画 */
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* 不同大小的图标 */
+.icon-sm {
+  font-size: 12px;
+  width: 12px;
+  height: 12px;
+}
+
+.icon-md {
+  font-size: 16px;
+  width: 16px;
+  height: 16px;
+}
+
+.icon-lg {
+  font-size: 20px;
+  width: 20px;
+  height: 20px;
+}
+
+.icon-xl {
+  font-size: 24px;
+  width: 24px;
+  height: 24px;
+}
+
+/* 图标颜色主题 */
+.icon-success {
+  color: var(--success-color, #10b981);
+}
+
+.icon-error {
+  color: var(--error-color, #ef4444);
+}
+
+.icon-warning {
+  color: var(--warning-color, #f59e0b);
+}
+
+.icon-info {
+  color: var(--info-color, #3b82f6);
+}
+
+/* 按钮中的图标 */
+button .icon {
+  margin-right: 6px;
+}
+
+/* 链接中的图标 */
+a .icon {
+  margin-left: 4px;
+}
