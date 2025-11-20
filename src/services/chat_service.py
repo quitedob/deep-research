@@ -18,6 +18,8 @@ from src.core.llm.base_llm import BaseLLM
 from src.core.llm.deepseek_llm import DeepSeekLLM
 from src.core.llm.zhipu_llm import ZhipuLLM
 from src.services.web_search_service import WebSearchService
+from src.core.memory.memory_manager import Mem0MemoryManager
+from src.core.memory.memory_agent import MemoryAgent
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +69,18 @@ class ChatService:
         self.chat_dao = ChatDAO()
         self._llm_instances: Dict[str, BaseLLM] = {}
         self.web_search_service = WebSearchService()
+        
+        # 初始化记忆系统
+        try:
+            self.memory_manager = Mem0MemoryManager()
+            self.memory_agent = MemoryAgent()
+            self.memory_enabled = True
+            logger.info("Memory system initialized successfully")
+        except Exception as e:
+            logger.warning(f"Memory system initialization failed: {e}. Running without memory.")
+            self.memory_manager = None
+            self.memory_agent = None
+            self.memory_enabled = False
     
     def _get_llm_instance(self, provider: str, model_name: str) -> BaseLLM:
         """获取LLM实例"""
@@ -137,13 +151,15 @@ class ChatService:
     
     async def chat(
         self,
-        chat_request: ChatRequest
+        chat_request: ChatRequest,
+        background_tasks: Optional[Any] = None
     ) -> Dict[str, Any]:
         """
         处理对话请求（非流式）
         
         Args:
             chat_request: 对话请求
+            background_tasks: FastAPI后台任务（用于异步记忆提取）
             
         Returns:
             对话响应
@@ -154,11 +170,25 @@ class ChatService:
             raise ValueError("会话不存在")
         
         # 保存用户消息
-        await self.chat_dao.add_message(
+        user_msg_result = await self.chat_dao.add_message(
             session_id=chat_request.session_id,
             role="user",
             content=chat_request.message
         )
+        
+        # === Mem0 记忆增强：检索相关记忆 ===
+        relevant_memories = []
+        if self.memory_enabled and self.memory_manager:
+            try:
+                relevant_memories = await self.memory_manager.retrieve_memories(
+                    query=chat_request.message,
+                    user_id=session['user_id'],
+                    top_k=5,
+                    use_hyde=True
+                )
+                logger.debug(f"Retrieved {len(relevant_memories)} relevant memories")
+            except Exception as e:
+                logger.error(f"Failed to retrieve memories: {e}")
         
         # 获取历史消息
         history_messages = await self.chat_dao.get_recent_messages(
@@ -168,10 +198,19 @@ class ChatService:
         
         # 构建消息列表
         messages = []
-        if session.get('system_prompt'):
+        
+        # 系统提示词 + 记忆注入
+        system_content = session.get('system_prompt', '')
+        if relevant_memories:
+            memory_context = "\n\n## 用户背景信息（请在回答时参考）：\n"
+            for mem in relevant_memories:
+                memory_context += f"- {mem['content']}\n"
+            system_content = system_content + memory_context if system_content else memory_context.strip()
+        
+        if system_content:
             messages.append({
                 "role": "system",
-                "content": session['system_prompt']
+                "content": system_content
             })
         
         for msg in history_messages:
@@ -196,13 +235,27 @@ class ChatService:
         content = response.get('choices', [{}])[0].get('message', {}).get('content', '')
         
         # 保存助手回复
-        await self.chat_dao.add_message(
+        assistant_msg_result = await self.chat_dao.add_message(
             session_id=chat_request.session_id,
             role="assistant",
             content=content,
             model_name=session['model_name'],
             tokens_used=response.get('usage', {}).get('total_tokens')
         )
+        
+        # === Mem0 记忆提取：后台异步处理 ===
+        if self.memory_enabled and self.memory_agent and background_tasks:
+            try:
+                background_tasks.add_task(
+                    self.memory_agent.process_conversation,
+                    session_id=chat_request.session_id,
+                    user_message=chat_request.message,
+                    assistant_message=content,
+                    message_id=assistant_msg_result
+                )
+                logger.debug("Scheduled memory extraction task")
+            except Exception as e:
+                logger.error(f"Failed to schedule memory extraction: {e}")
         
         return {
             "session_id": chat_request.session_id,
@@ -211,7 +264,8 @@ class ChatService:
                 "content": content,
                 "model_name": session['model_name']
             },
-            "usage": response.get('usage')
+            "usage": response.get('usage'),
+            "memories_used": len(relevant_memories) if relevant_memories else 0
         }
     
     async def chat_stream(

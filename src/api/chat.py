@@ -6,7 +6,7 @@
 """
 
 import logging
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from typing import List, Optional
 
@@ -160,6 +160,7 @@ async def clear_messages(
 @router.post("/chat", response_model=ChatResponse, summary="发送对话消息")
 async def chat(
     chat_request: ChatRequest,
+    background_tasks: BackgroundTasks,
     user_id: str = Depends(get_current_user_id)
 ):
     """
@@ -168,6 +169,10 @@ async def chat(
     - **session_id**: 会话ID
     - **message**: 用户消息内容
     - **stream**: 是否使用流式输出（此接口固定为false）
+    
+    集成Mem0记忆系统：
+    - 自动检索相关历史记忆增强上下文
+    - 后台异步提取对话中的关键事实
     """
     # 验证会话所有权
     session = await chat_service.get_session(chat_request.session_id)
@@ -177,7 +182,7 @@ async def chat(
         raise HTTPException(status_code=403, detail="无权访问此会话")
     
     try:
-        response = await chat_service.chat(chat_request)
+        response = await chat_service.chat(chat_request, background_tasks)
         return response
     except Exception as e:
         logger.error(f"对话失败: {e}", exc_info=True)

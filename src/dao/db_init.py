@@ -134,6 +134,9 @@ class DatabaseInitializer:
                 else:
                     logger.info(f"表 '{table_name}' 不存在，创建中...")
                     await self._create_table(conn, table_name, create_sql)
+            
+            # 创建测试用户（如果不存在）
+            await self._create_test_users(conn)
                     
         finally:
             await conn.close()
@@ -239,6 +242,38 @@ class DatabaseInitializer:
         """创建表"""
         await conn.execute(create_sql)
         logger.info(f"✓ 表 '{table_name}' 创建成功")
+    
+    async def _create_test_users(self, conn: asyncpg.Connection):
+        """创建测试用户（用于开发和测试）"""
+        from datetime import datetime
+        
+        test_users = [
+            ("demo_user_001", "demo_user_001", "demo001@example.com", "Demo User 001"),
+            ("demo_user_002", "demo_user_002", "demo002@example.com", "Demo User 002"),
+            ("demo_user_003", "demo_user_003", "demo003@example.com", "Demo User 003"),
+            ("test_user", "test_user", "test@example.com", "Test User"),
+        ]
+        
+        for user_id, username, email, full_name in test_users:
+            # 检查用户是否已存在
+            exists = await conn.fetchval(
+                "SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)",
+                user_id
+            )
+            
+            if not exists:
+                now = datetime.utcnow()
+                await conn.execute(
+                    """
+                    INSERT INTO users (id, username, email, password_hash, full_name, is_active, is_verified, created_at, updated_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    """,
+                    user_id, username, email, "dummy_hash_for_testing", 
+                    full_name, True, True, now, now
+                )
+                logger.info(f"✓ 创建测试用户: {username}")
+            else:
+                logger.debug(f"测试用户已存在: {username}")
 
 
 # 全局初始化器实例

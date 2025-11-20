@@ -75,12 +75,14 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     model_name VARCHAR(100),
     tokens_used INTEGER,
     metadata JSONB,
+    is_processed BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_chat_messages_session_id ON chat_messages(session_id);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_created_at ON chat_messages(created_at);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_is_processed ON chat_messages(is_processed);
 """
 
 # 研究会话表
@@ -155,12 +157,36 @@ CREATE INDEX IF NOT EXISTS idx_research_memory_session_id ON research_memory(ses
 CREATE INDEX IF NOT EXISTS idx_research_memory_timestamp ON research_memory(timestamp);
 """
 
+# 用户事实表 (Mem0 核心)
+USER_FACTS_TABLE = """
+CREATE TABLE IF NOT EXISTS user_facts (
+    id VARCHAR(255) PRIMARY KEY,
+    user_id VARCHAR(255) NOT NULL,
+    fact_content TEXT NOT NULL,
+    fact_type VARCHAR(50) DEFAULT 'general',
+    source_session_id VARCHAR(255),
+    source_message_id INTEGER,
+    validity_score FLOAT DEFAULT 1.0,
+    embedding_id VARCHAR(255),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (source_session_id) REFERENCES chat_sessions(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_facts_user_id ON user_facts(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_facts_fact_type ON user_facts(fact_type);
+CREATE INDEX IF NOT EXISTS idx_user_facts_validity_score ON user_facts(validity_score);
+CREATE INDEX IF NOT EXISTS idx_user_facts_created_at ON user_facts(created_at DESC);
+"""
+
 # 所有表的定义
 ALL_TABLES = {
     "users": USERS_TABLE,
     "user_preferences": USER_PREFERENCES_TABLE,
     "chat_sessions": CHAT_SESSIONS_TABLE,
     "chat_messages": CHAT_MESSAGES_TABLE,
+    "user_facts": USER_FACTS_TABLE,
     "research_sessions": RESEARCH_SESSIONS_TABLE,
     "research_findings": RESEARCH_FINDINGS_TABLE,
     "research_citations": CITATIONS_TABLE,
@@ -220,7 +246,22 @@ TABLE_SCHEMAS = {
             "model_name": "character varying",
             "tokens_used": "integer",
             "metadata": "jsonb",
+            "is_processed": "boolean",
             "created_at": "timestamp without time zone",
+        }
+    },
+    "user_facts": {
+        "columns": {
+            "id": "character varying",
+            "user_id": "character varying",
+            "fact_content": "text",
+            "fact_type": "character varying",
+            "source_session_id": "character varying",
+            "source_message_id": "integer",
+            "validity_score": "double precision",
+            "embedding_id": "character varying",
+            "created_at": "timestamp without time zone",
+            "updated_at": "timestamp without time zone",
         }
     },
     "research_sessions": {

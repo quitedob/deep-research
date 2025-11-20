@@ -160,10 +160,23 @@ class OllamaLLM(BaseLLM):
         response = await self._make_request("chat", data)
 
         # Convert to standard format
+        # Handle created_at timestamp safely
+        created_at = response.get("created_at", "")
+        try:
+            # Try to parse ISO timestamp to unix timestamp
+            from datetime import datetime
+            if created_at:
+                dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                created_timestamp = int(dt.timestamp())
+            else:
+                created_timestamp = 0
+        except (ValueError, AttributeError):
+            created_timestamp = 0
+        
         return {
-            "id": response.get("created_at", ""),
+            "id": created_at,
             "object": "chat.completion",
-            "created": int(response.get("created_at", 0)),
+            "created": created_timestamp,
             "model": response.get("model", model),
             "choices": [
                 {
@@ -298,10 +311,22 @@ class OllamaLLM(BaseLLM):
 
         response = await self._make_request("generate", data)
 
+        # Handle created_at timestamp safely
+        created_at = response.get("created_at", "")
+        try:
+            from datetime import datetime
+            if created_at:
+                dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                created_timestamp = int(dt.timestamp())
+            else:
+                created_timestamp = 0
+        except (ValueError, AttributeError):
+            created_timestamp = 0
+
         return {
-            "id": response.get("created_at", ""),
+            "id": created_at,
             "object": "text.completion",
-            "created": int(response.get("created_at", 0)),
+            "created": created_timestamp,
             "model": response.get("model", model),
             "choices": [
                 {
@@ -336,7 +361,6 @@ class OllamaLLM(BaseLLM):
         """
         # Common Ollama models - user should update this list based on installed models
         return [
-            "qwen2.5:3b",
             "gemma3:4b",
             "gemma3:12b"
         ]
@@ -403,7 +427,7 @@ class OllamaLLM(BaseLLM):
         """
         data = {
             "model": model,
-            "prompt": input_text,
+            "input": input_text,
             "truncate": truncate
         }
 
@@ -414,7 +438,12 @@ class OllamaLLM(BaseLLM):
 
         try:
             response = await self._make_request("embed", data)
-            return response.get("embedding", [])
+            # Ollama returns "embeddings" (plural) as an array of arrays
+            # For single input, we return the first embedding
+            embeddings = response.get("embeddings", [])
+            if embeddings and len(embeddings) > 0:
+                return embeddings[0]  # Return first embedding for single input
+            return []
         except Exception as e:
             logger.error(f"Failed to generate embeddings: {e}")
             return []
