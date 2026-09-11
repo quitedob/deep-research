@@ -1,0 +1,14 @@
+/* Blue and teal syntax colors, shared by code blocks in both application themes. */
+pre code.hljs { display: block; overflow-x: auto; padding: 1em; }
+code.hljs { padding: 3px 5px; }
+.hljs { color: #e2e8f0; background: #12202e; }
+.hljs-comment, .hljs-quote { color: #a0b5c6; font-style: italic; }
+.hljs-keyword, .hljs-selector-tag, .hljs-literal { color: #67d7e8; }
+.hljs-string, .hljs-regexp, .hljs-addition, .hljs-meta .hljs-string { color: #6ee7c8; }
+.hljs-title, .hljs-title.function_, .hljs-section, .hljs-attribute { color: #7dd3fc; }
+.hljs-number, .hljs-symbol, .hljs-bullet, .hljs-type { color: #fbbf24; }
+.hljs-built_in, .hljs-variable, .hljs-template-variable { color: #b7e9f5; }
+.hljs-name, .hljs-selector-id, .hljs-selector-class { color: #5eead4; }
+.hljs-deletion { color: #fda4a4; }
+.hljs-emphasis { font-style: italic; }
+.hljs-strong { font-weight: bold; }
